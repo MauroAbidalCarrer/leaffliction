@@ -12,4 +12,9 @@ mkdir -p images/Apple images/Grape                                              
 mv images/Apple_* images/Apple/                                                                 # Move all of the apple images into Apple directory.
 mv images/Grape_* images/Grape/                                                                 # Move all of the grape images into Grape directory.
 echo "-Reordered images hierarchy."
+for file in images/Apple/*/*                                                                    # Rename each image to replace spaces by underscores.
+do
+  mv -- "$file" "${file// /_}"
+done
+echo "-Changed spaces to underscores in filenames."
 echo "Setup done."
