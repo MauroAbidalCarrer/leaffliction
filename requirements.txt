@@ -1,3 +1,4 @@
 plantcv
 matplotlib
 numpy
+tensorflow
