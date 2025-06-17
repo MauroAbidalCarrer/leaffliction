@@ -1,4 +1,4 @@
-name: DL_CV_inter
+name: learn-DL
 channels:
   - nvidia
   - pytorch
