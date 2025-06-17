@@ -12,7 +12,7 @@ class MyDataLoader(DataLoader):
         dataset: Dataset,
         batch_size: int,
         device: dev,
-        attacker: Callable[[Tensor, Tensor], Tensor]|None,
+        attacker: Callable[[Tensor, Tensor], Tensor]|None=None,
         **kwargs,
         ):
         super().__init__(dataset, batch_size, **kwargs)
