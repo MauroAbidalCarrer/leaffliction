@@ -4,16 +4,15 @@ from urllib.error import HTTPError, URLError
 import zipfile
 import shutil
 
-url = "https://cdn.intra.42.fr/document/document/42144/leaves.zip"
-zip = "data.zip"
-dataFolder = "data"
+import constants as consts
+
 
 def downloadZip():
-	if os.path.exists(zip):
-		os.remove(zip)
+	if os.path.exists("dataset.zip"):
+		os.remove("dataset.zip")
 	try:
 		print("Downloading Dataset Zip")
-		urllib.request.urlretrieve(url, zip)
+		urllib.request.urlretrieve(consts.DATASET_URL, "dataset.zip")
 		print("Download Completed")
 		unzipData()
 	except HTTPError as e:
@@ -25,7 +24,7 @@ def downloadZip():
 
 def unzipData():
 	try:
-		with zipfile.ZipFile(zip, "r") as z:
+		with zipfile.ZipFile("dataset.zip", "r") as z:
 			if z.testzip() is not None:
 				print("Zip file is Corrupted")
 			else:
@@ -42,20 +41,10 @@ def unzipData():
 		print(f"An unexpected error occurred: {e}")
 
 def replaceData():
-	if os.path.exists(dataFolder):
-		shutil.rmtree(dataFolder)
+	if os.path.exists("dataset"):
+		shutil.rmtree("dataset")
 		print("Old data removed")
-	os.rename("images", dataFolder)
-	os.remove(zip)
+	os.rename("images", "dataset")
+	os.remove("dataset.zip")
 
 downloadZip()
-
-
-
-
-
-
-
-
-
-
