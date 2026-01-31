@@ -9,27 +9,27 @@ from torch import Tensor, nn
 import torch.nn.functional as F
 
 
-def main():
-    if len(sys.argv) != 2:
-        print("Provide path to image.")
-        exit(1)
-    img = torchvision.io.decode_image(sys.argv[1])
-    img = (img.permute(1, 2, 0) / 255).unsqueeze(0)
-    mask = green_adaptive_threshold(img, 0.15, torch.float)
-    colored_mask = mask.repeat(1, 1, 1, 3)
-    imgs = torch.concat((
-        img,
-        gaussian_blur(img),
-        colored_mask,
-        horizontal_diff(img),
-        vertical_diff(img),
-        diff_intensity(img),
-        grayscale_intensity(img).repeat(1, 1, 1, 3),
-    ))
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--src", required=True)
+    parser.add_argument("--dst", default=None)
+    args = parser.parse_args()
+
+    if args.dst is None:
+        assert os.path.isfile(args.src), "--src must be a file when --dst is not provided"
+        plt_transforms_of_single_img(args.src)
+    else:
+        assert os.path.isdir(args.src), "--src must be a directory when --dst is provided"
+        transform_dataset(args.src, args.dst)
+    
+def plt_transforms_of_single_img(img_path: str) -> None:
+    img = torchvision.io.decode_image(img_path)
+    img = (img.permute(1, 2, 0) / 255).unsqueeze(0)  # (1, H, W, C)
+    imgs = apply_transforms(img).squeeze(0)  # (T, H, W, C)
     fig = px.imshow(imgs, facet_col=0)
     titles = [
         "original",
-        "blured",
+        "blurred",
         "green adaptive threshold",
         "horizontal diff",
         "vertical diff",
@@ -40,6 +40,42 @@ def main():
         lambda a: a.update(text=titles[int(a.text.split("=")[-1])])
     )
     fig.show()
+    
+def transform_dataset(src_dir: str, dst_path: str) -> None:
+    img_paths = [
+        os.path.join(src_dir, f)
+        for f in sorted(os.listdir(src_dir))
+        if f.lower().endswith((".png", ".jpg", ".jpeg"))
+    ]
+    assert len(img_paths) > 0, "No images found in src directory."
+    imgs = []
+    for p in img_paths:
+        img = torchvision.io.decode_image(p)
+        img = img.permute(1, 2, 0) / 255  # (H, W, C)
+        imgs.append(img)
+    batch = torch.stack(imgs, dim=0)  # (B, H, W, C)
+    transformed = apply_transforms(batch)  # (B, T, H, W, C)
+    torch.save(transformed, dst_path)
+
+def apply_transforms(img: Tensor) -> Tensor:
+    """
+    img: (B, H, W, C)
+    returns: (B, T, H, W, C) with T=6
+    """
+    mask = green_adaptive_threshold(img, 0.15, torch.float)
+    colored_mask = mask.repeat(1, 1, 1, 3)
+
+    transforms = [
+        img,
+        gaussian_blur(img),
+        colored_mask,
+        horizontal_diff(img),
+        vertical_diff(img),
+        diff_intensity(img),
+        grayscale_intensity(img).repeat(1, 1, 1, 3),
+    ]
+
+    return torch.stack(transforms, dim=1)
 
 gaussian_blur = torchvision.transforms.GaussianBlur(5, 3)
 
@@ -56,8 +92,13 @@ def green_adaptive_threshold(
         quantile_threshold: float,
         dtype: torch.dtype=torch.bool,
     ) -> Tensor:
-    threshold = torch.quantile(x[..., 1], quantile_threshold)
-    return (x[..., 1] > threshold).to(dtype=dtype).unsqueeze(-1)
+    x_green = x[..., 1]
+    threshold = torch.quantile(
+        x_green.flatten(1),
+        quantile_threshold,
+        dim=1,
+    )
+    return (x_green > threshold.reshape(-1, 1, 1)).to(dtype=dtype).unsqueeze(-1)
 
 def horizontal_diff(x: Tensor) -> Tensor:
     h_diff = x[:, :, 1:] - x[:, :, :-1]
