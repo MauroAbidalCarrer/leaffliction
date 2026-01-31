@@ -7,7 +7,7 @@ from pathlib import Path
 from torchvision.transforms import v2, CenterCrop
 
 class Crop(CenterCrop):
-    def __init__(self, resize_target: int = 256, crop_ratio: float = 0.80) -> None:
+    def __init__(self, resize_target: int = 256, crop_ratio: float = 0.6) -> None:
         """
         Initialize Crop transform with parameters for computing crop size.
         
@@ -67,7 +67,8 @@ class Augmentation:
         blur: Optional[Dict[str, Any]] = None, 
         jitter: Optional[Dict[str, Any]] = None, 
         crop: Optional[Dict[str, Any]] = None, 
-        perspective: Optional[Dict[str, Any]] = None
+        perspective: Optional[Dict[str, Any]] = None,
+        flash: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Initialize the Augmentation class with transformation(s).
@@ -79,12 +80,15 @@ class Augmentation:
                    'saturation' (default: 0.2), 'hue' (default: 0.1) keys.
             crop: Dict with 'resize_target' (default: 256) and 'crop_ratio' (default: 0.80) keys.
             perspective: Dict with 'distortion_scale' (default: 0.3) key.
+            flash: Dict with 'brightness' (default: (2.0, 2.0)), 'contrast' (default: (0.8, 1.0)),
+                  'saturation' (default: (0.7, 1.0)), and 'p' (default: 0.5) keys.
         """
         rotation = rotation or {}
         blur = blur or {}
         jitter = jitter or {}
         crop = crop or {}
         perspective = perspective or {}
+        flash = flash or {}
 
         self.rotation: Any = self._init_optional(
             v2.RandomRotation,
@@ -108,7 +112,7 @@ class Augmentation:
         self.crop: Crop = self._init_optional(
             Crop,
             resize_target=crop.get('resize_target', 256),
-            crop_ratio=crop.get('crop_ratio', 0.80)
+            crop_ratio=crop.get('crop_ratio', 0.6)
         )
 
         self.perspective: Any = self._init_optional(
@@ -116,13 +120,18 @@ class Augmentation:
             distortion_scale=perspective.get('distortion_scale', 0.3)
         )
 
-        self.flash: Any = v2.RandomApply([
-            v2.ColorJitter(
-                brightness=(1.2, 2.0),
-                contrast=(0.8, 1.0),
-                saturation=(0.7, 1.0)
-            )
-        ], p=0.5)
+        flash_color_jitter: Any = self._init_optional(
+            v2.ColorJitter,
+            brightness=flash.get('brightness', (2.0, 2.0)),
+            contrast=flash.get('contrast', (0.8, 1.0)),
+            saturation=flash.get('saturation', (0.7, 1.0))
+        )
+
+        self.flash: Any = self._init_optional(
+            v2.RandomApply,
+            transforms=[flash_color_jitter],
+            p=flash.get('p', 0.5)
+        )
 
         self.transformations: Dict[str, Any] = {
             'Rotation': self.rotation,
