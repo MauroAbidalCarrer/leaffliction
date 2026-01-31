@@ -21,6 +21,7 @@ def main() -> None:
     else:
         assert os.path.isdir(args.src), "--src must be a directory when --dst is provided"
         transform_dataset(args.src, args.dst)
+        plt_transformed_dataset(args.dst)
     
 def plt_transforms_of_single_img(img_path: str) -> None:
     img = torchvision.io.decode_image(img_path)
@@ -57,14 +58,42 @@ def transform_dataset(src_dir: str, dst_path: str) -> None:
     transformed = apply_transforms(batch)  # (B, T, H, W, C)
     torch.save(transformed, dst_path)
 
+def plt_transformed_dataset(
+        pt_path: str,
+        num_samples: int = 4,
+    ) -> None:
+    data = torch.load(pt_path)  # (B, T, H, W, C)
+    assert data.ndim == 5, "Expected tensor of shape (B, T, H, W, C)"
+
+    B, T, H, W, C = data.shape
+    num_samples = min(num_samples, B)
+
+    # Select first N samples
+    imgs = data[:num_samples]          # (N, T, H, W, C)
+    imgs = imgs.reshape(-1, H, W, C)    # (N*T, H, W, C)
+
+    fig = px.imshow(imgs, facet_col=0, facet_col_wrap=7)
+    transform_titles = [
+        "original",
+        "blurred",
+        "green adaptive threshold",
+        "horizontal diff",
+        "vertical diff",
+        "diff mean",
+        "grayscale",
+    ]
+
+    # # Update column (transform) titles
+    # for ann in fig.layout.annotations:
+    #     if "col=" in ann.text:
+    #         col_idx = int(ann.text.split("=")[-1])
+    #         ann.text = transform_titles[col_idx]
+
+    fig.show()
+
 def apply_transforms(img: Tensor) -> Tensor:
-    """
-    img: (B, H, W, C)
-    returns: (B, T, H, W, C) with T=6
-    """
     mask = green_adaptive_threshold(img, 0.15, torch.float)
     colored_mask = mask.repeat(1, 1, 1, 3)
-
     transforms = [
         img,
         gaussian_blur(img),
@@ -74,7 +103,6 @@ def apply_transforms(img: Tensor) -> Tensor:
         diff_intensity(img),
         grayscale_intensity(img).repeat(1, 1, 1, 3),
     ]
-
     return torch.stack(transforms, dim=1)
 
 gaussian_blur = torchvision.transforms.GaussianBlur(5, 3)
