@@ -5,6 +5,7 @@ import torch
 import torchvision
 from torch import Tensor
 import plotly.express as px
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
 
@@ -30,8 +31,8 @@ def main() -> None:
 def plt_transforms_of_single_img(img_path: str) -> None:
     img = torchvision.io.decode_image(img_path)
     img = (img.permute(1, 2, 0) / 255).unsqueeze(0)  # (1, H, W, C)
-    imgs = apply_transforms(img).squeeze(0)  # (T, H, W, C)
-    fig = px.imshow(imgs, facet_col=0)
+    imgs = apply_transforms(img).squeeze(0)        # (T, H, W, C)
+
     titles = [
         "original",
         "blurred",
@@ -41,10 +42,21 @@ def plt_transforms_of_single_img(img_path: str) -> None:
         "diff mean",
         "grayscale",
     ]
-    fig.for_each_annotation(
-        lambda a: a.update(text=titles[int(a.text.split("=")[-1])])
-    )
-    fig.show()
+
+    T = imgs.shape[0]
+    fig, axes = plt.subplots(1, T, figsize=(3 * T, 3))
+
+    # Handle the case T == 1
+    if T == 1:
+        axes = [axes]
+
+    for i, ax in enumerate(axes):
+        ax.imshow(imgs[i])
+        ax.set_title(titles[i])
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()
 
 
 def transform_dataset(src_dir: str, dst_path: str) -> None:
