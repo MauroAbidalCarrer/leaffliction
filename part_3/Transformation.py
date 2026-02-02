@@ -89,7 +89,7 @@ def transform_dataset(src_dir: str, dst: str) -> None:
 
     batch = torch.stack(imgs, dim=0)      # (B, H, W, C)
 
-    transformed = apply_transforms(batch) # (B, T, H, W, C)
+    transformed = apply_transforms(batch)  # (B, T, H, W, C)
 
     for t, name in enumerate(transform_names):
         imgs_t = transformed[:, t]        # (B, H, W, C)
