@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "flake8>=7.3.0",
+    "matplotlib>=3.10.8",
     "plotly>=6.5.2",
     "torch>=2.10.0",
     "torchvision>=0.25.0",
