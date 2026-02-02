@@ -25,7 +25,7 @@ def main() -> None:
     else:
         assert os.path.isdir(args.src), PTH_NOT_FILE_ERR.format(pth="dst")
         transform_dataset(args.src, args.dst)
-        plt_transformed_dataset(args.dst)
+        # plt_transformed_dataset(args.dst)
 
 
 def plt_transforms_of_single_img(img_path: str) -> None:
@@ -59,21 +59,49 @@ def plt_transforms_of_single_img(img_path: str) -> None:
     plt.show()
 
 
-def transform_dataset(src_dir: str, dst_path: str) -> None:
+def transform_dataset(src_dir: str, dst: str) -> None:
     img_paths = [
         os.path.join(src_dir, f)
         for f in sorted(os.listdir(src_dir))
         if f.lower().endswith((".png", ".jpg", ".jpeg"))
     ]
     assert len(img_paths) > 0, "No images found in src directory."
+
+    transform_names = [
+        "original",
+        "blurred",
+        "green_adaptive_threshold",
+        "horizontal_diff",
+        "vertical_diff",
+        "diff_mean",
+        "grayscale",
+    ]
+
+    # Create output directories
+    for name in transform_names:
+        os.makedirs(os.path.join(dst, name), exist_ok=True)
+
     imgs = []
     for p in img_paths:
         img = torchvision.io.decode_image(p)
         img = img.permute(1, 2, 0) / 255  # (H, W, C)
         imgs.append(img)
-    batch = torch.stack(imgs, dim=0)  # (B, H, W, C)
-    transformed = apply_transforms(batch)  # (B, T, H, W, C)
-    torch.save(transformed, dst_path)
+
+    batch = torch.stack(imgs, dim=0)      # (B, H, W, C)
+
+    transformed = apply_transforms(batch) # (B, T, H, W, C)
+
+    for t, name in enumerate(transform_names):
+        imgs_t = transformed[:, t]        # (B, H, W, C)
+
+        # Convert to uint8 CHW for PNG writing
+        imgs_t = (imgs_t.clamp(0, 1) * 255).to(torch.uint8)
+        imgs_t = imgs_t.permute(0, 3, 1, 2)  # (B, C, H, W)
+
+        for i, src_path in enumerate(img_paths):
+            base = os.path.splitext(os.path.basename(src_path))[0]
+            out_path = os.path.join(dst, name, f"{base}.png")
+            torchvision.io.write_png(imgs_t[i], out_path)
 
 
 def plt_transformed_dataset(
