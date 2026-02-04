@@ -1,10 +1,58 @@
 import logging
 import argparse
 import os
-from typing import Dict, Optional, List, Union, Any
+from tqdm import tqdm
+from typing import Dict, Iterator, Optional, Union, Any
 from PIL import Image
 from pathlib import Path
 from torchvision.transforms import v2, CenterCrop
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
+def plot_augmentations_grid(
+    original_img: Image.Image,
+    augmented_images: Dict[str, Image.Image],
+    cols: int = 3,
+):
+    """
+    Plot original image and its augmentations in a grid using Plotly.
+    """
+
+    all_images = {"Original": original_img, **augmented_images}
+    names = list(all_images.keys())
+    images = list(all_images.values())
+
+    rows = int(np.ceil(len(images) / cols))
+
+    fig = make_subplots(
+        rows=rows,
+        cols=cols,
+        subplot_titles=names
+    )
+
+    for idx, (name, img) in enumerate(all_images.items()):
+        row = idx // cols + 1
+        col = idx % cols + 1
+
+        img_np = np.array(img)
+
+        fig.add_trace(
+            go.Image(z=img_np),
+            row=row,
+            col=col
+        )
+
+    fig.update_layout(
+        height=300 * rows,
+        width=300 * cols,
+        title_text="Image Augmentations Grid",
+        showlegend=False
+    )
+
+    fig.show()
 
 
 class Crop(CenterCrop):
@@ -160,7 +208,16 @@ class Augmentation:
     def _load_image(self, img: Union[str, Path, Image.Image]) -> Image.Image:
         """Load image from path or return PIL Image."""
         if isinstance(img, (str, Path)):
-            return Image.open(img)
+            try:
+                return Image.open(img)
+            except (
+                FileNotFoundError,
+                OSError,
+                Image.UnidentifiedImageError
+            ) as e:
+                raise ValueError(
+                    f"Cannot load image from {img}: {e}"
+                ) from e
         return img
 
     def _apply_transform(
@@ -216,36 +273,24 @@ class Augmentation:
         output_dir: Optional[Union[str, Path]] = None
     ) -> Path:
         """
-        Save an augmented image with the naming convention:
-        original_name_transformname.ext
+        Compute the output path for an augmented image.
 
         Args:
-            image: PIL Image to save
-            original_path: Original image path
-            transform_name: Name of the transformation applied
-            output_dir: Optional output directory. If None, saves next to
-                original image.
+            image_path: Path to the original image
+            transform_name: Name of the transformation to apply
+            output_dir: Directory where the augmented image should be saved
 
         Returns:
             Path to saved image
         """
-        original_path = Path(original_path)
-        stem = original_path.stem
-        suffix = original_path.suffix
+        image_path = Path(image_path)
+        output_dir = Path(output_dir)
 
+        stem = image_path.stem
+        suffix = image_path.suffix
         new_filename = f"{stem}_{transform_name}{suffix}"
+        output_path = output_dir / new_filename
 
-        if output_dir:
-            output_path = (
-                Path(output_dir)
-                / original_path.parent.relative_to(original_path.parents[-1])
-                / new_filename
-            )
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            output_path = original_path.parent / new_filename
-
-        image.save(output_path)
         return output_path
 
     def process_image(
@@ -254,70 +299,137 @@ class Augmentation:
         output_dir: Optional[Union[str, Path]] = None
     ) -> List[Path]:
         """
-        Process a single image: apply all transformations and save them.
+        Apply a transformation to an image and optionally save it.
 
         Args:
-            image_path: Path to the image file
-            output_dir: Optional output directory. If None, saves next to
-                original image.
+            image_path: Path to the input image
+            transform_name: Name of the transformation to apply
+            output_path: Optional path to save the augmented image
 
         Returns:
-            List of paths to saved augmented images
+            Augmented PIL Image if successful, None otherwise
         """
-        image_path = Path(image_path)
-        if not image_path.exists():
-            raise ValueError(f"Image does not exist: {image_path}")
+        try:
+            orig_img = self._load_image(image_path)
 
-        saved_paths: List[Path] = []
+            transform = self.transformations[transform_name]
+            augmented_img = transform(orig_img)
 
-        for transform_name, transform in self.transformations.items():
-            try:
-                orig_img: Image.Image = self._load_image(image_path)
-                augmented_img: Image.Image = transform(orig_img)
-                saved_path: Path = self._save_augmented_image(
-                    augmented_img,
-                    image_path,
-                    transform_name,
-                    output_dir
-                )
-                saved_paths.append(saved_path)
-            except Exception as e:
-                logging.warning(
-                    f"Failed to apply {transform_name} to {image_path}: {e}"
-                )
+            if output_path is not None:
+                output_path = Path(output_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                augmented_img.save(output_path)
 
-        return saved_paths
+            return augmented_img
+        except (ValueError, OSError, KeyError) as e:
+            logging.warning(
+                f"Failed to apply {transform_name} to {image_path}: {e}"
+            )
+            return None
 
-    def process_folder(
+    def _apply_all_transformations(
         self,
-        folder_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None
-    ) -> Dict[str, List[Path]]:
+        image_path: Union[str, Path],
+        output_dir: Optional[Union[str, Path]] = None,
+    ) -> Dict[str, Image.Image]:
         """
-        Process all images in a folder recursively.
+        Apply all transformations to an image and save them.
 
         Args:
-            folder_path: Path to the folder containing images
-            output_dir: Optional output directory. If None, saves next to
-                original images.
+            image_path: Path to the input image
+            output_dir: Optional directory where augmented images should be
+                       saved. If None, uses the directory of the input image.
 
         Returns:
-            Dictionary mapping original image paths to lists of saved
-            augmented image paths
+            Dictionary mapping transform names to augmented PIL Images
         """
-        image_paths: List[Path] = self._find_images_recursive(folder_path)
-        results: Dict[str, List[Path]] = {}
+        transform_names = list(self.transformations.keys())
 
-        for img_path in image_paths:
+        image_path = Path(image_path)
+        if output_dir is None:
+            output_dir = image_path.parent
+        else:
+            output_dir = Path(output_dir)
+
+        augmented_images: Dict[str, Image.Image] = {}
+
+        for transform_name in transform_names:
+            output_path = self._compute_output_path(
+                image_path, transform_name, output_dir
+            )
+
+            augmented_img = self._apply_transform_to_image(
+                image_path, transform_name, output_path
+            )
+            if augmented_img is not None:
+                augmented_images[transform_name] = augmented_img
+
+        return augmented_images
+
+    def _copy_dataset(
+        self,
+        dataset_path: Union[str, Path],
+        output_dir: Union[str, Path],
+        images: Iterator[Path]
+    ) -> None:
+        """Copy all images to output directory preserving structure."""
+
+        for image in tqdm(
+            images,
+            desc=f'Copying images from {dataset_path} to {output_dir}',
+            total=len(os.listdir(dataset_path))
+        ):
             try:
-                saved_paths: List[Path] = self.process_image(
-                    img_path, output_dir
+                save_path = Path(
+                    f'{output_dir}/',
+                    image.parent.stem
                 )
-                results[str(img_path)] = saved_paths
-            except Exception as e:
-                logging.error(f"Failed to process {img_path}: {e}")
+                os.makedirs(save_path, exist_ok=True)
 
-        return results
+                img = self._load_image(image)
+                output_path = save_path / image.name
+                img.save(output_path)
+            except Exception as e:
+                logging.warning(f"Failed to copy {image}: {e}")
+                continue
+
+    def augment_dataset(
+        self,
+        dataset_path: Union[str, Path],
+        output_dir: Union[str, Path] = "augmented_directory"
+    ) -> None:
+        """Copy dataset and apply all transformations to each image."""
+        dataset_path = Path(dataset_path)
+        output_dir = Path(output_dir)
+
+        if not dataset_path.exists() or not dataset_path.is_dir():
+            raise ValueError(f"Dataset path does not exist: {dataset_path}")
+
+        images = Path(dataset_path).glob('**/*.JPG')
+
+        self._copy_dataset(dataset_path, output_dir, images)
+
+        for subdirectory_class in tqdm(
+            Path(dataset_path).iterdir(),
+            desc=f'Augmenting images from {dataset_path}',
+            total=len(os.listdir(dataset_path))
+        ):
+            if not subdirectory_class.is_dir():
+                continue
+
+            rel_path = subdirectory_class.relative_to(dataset_path)
+            output_category_dir = output_dir / rel_path
+
+            images = list(subdirectory_class.glob('**/*.JPG'))
+
+            for image_path in images:
+                try:
+                    self._apply_all_transformations(
+                        image_path,
+                        output_category_dir)
+                except Exception as e:
+                    logging.warning(f"Failed to augment {image_path}: {e}")
+                    continue
 
     # Static methods
     @staticmethod
@@ -345,31 +457,6 @@ class Augmentation:
                 "Using default parameters instead."
             )
             return transform_class()
-
-    @staticmethod
-    def _find_images_recursive(folder_path: Union[str, Path]) -> List[Path]:
-        """
-        Recursively find all image files in a folder and its subdirectories.
-
-        Args:
-            folder_path: Path to the folder to search
-
-        Returns:
-            List of image file paths
-        """
-        folder: Path = Path(folder_path)
-        if not folder.exists():
-            raise ValueError(f"Folder does not exist: {folder_path}")
-
-        image_extensions: set = {'.JPG'}
-        image_paths: List[Path] = []
-
-        for root, dirs, files in os.walk(folder):
-            for file in files:
-                if Path(file).suffix in image_extensions:
-                    image_paths.append(Path(root) / file)
-
-        return image_paths
 
 
 def main() -> None:
@@ -400,24 +487,25 @@ def main() -> None:
         return
 
     if input_path.is_file():
-        print(f"Processing image: {input_path}")
-        saved_paths: List[Path] = augmentation.process_image(
-            input_path, args.output
+        print(f"Applying transformations to {input_path.name}...")
+        augmented_images = augmentation._apply_all_transformations(
+            input_path
         )
-        print(f"Saved {len(saved_paths)} augmented images")
-        for path in saved_paths:
-            print(f"  - {path}")
+        if augmented_images:
+            try:
+                original_img = augmentation._load_image(input_path)
+                plot_augmentations_grid(original_img, augmented_images)
+            except Exception as e:
+                logging.warning(f"Failed to plot images: {e}")
+
     elif input_path.is_dir():
-        print(f"Processing folder recursively: {input_path}")
-        results: Dict[str, List[Path]] = augmentation.process_folder(
-            input_path, args.output
-        )
-        total_images: int = len(results)
-        total_augmented: int = sum(
-            len(paths) for paths in results.values()
-        )
-        print(f"Processed {total_images} images")
-        print(f"Generated {total_augmented} augmented images")
+        try:
+            augmentation.augment_dataset(
+                input_path
+            )
+        except Exception as e:
+            logging.exception(f"Error during balancing: {e}")
+            return
     else:
         print(f"Error: Invalid path: {input_path}")
 
