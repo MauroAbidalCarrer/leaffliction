@@ -1,7 +1,15 @@
 import os
+from typing import (
+    Optional,
+    Callable,
+    Literal,
+    Tuple,
+    Dict,
+)
 from typing import Any
 from itertools import pairwise, repeat
 
+import wandb
 import torch
 import torchvision
 import pandas as pd
@@ -22,6 +30,7 @@ LABEL2ID = {
 DEVICE = torch.device("cuda")
 BATCH_SIZE = 32
 N_EPOCHS = 3
+criterion_t = Callable[[Tensor, Tensor], Tuple[Tensor, Dict[str, Tensor]]]
 
 
 class CNN(nn.Module):
@@ -67,61 +76,73 @@ class CNN(nn.Module):
         return x
 
 
-def training_step(
-    model: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    criterion,
-    x: Tensor,
-    y: Tensor,
-) -> dict[str, float]:
-    x = x.to(dtype=torch.float32, device=DEVICE)
-    y = y.to(dtype=torch.long, device=DEVICE)
-    optimizer.zero_grad()
-    with torch.autocast(DEVICE.type, torch.bfloat16):
-        model_output = model(x)
-        loss = criterion(model_output, y)
-        loss.backward()
-    loss_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    optimizer.step()
-    with torch.no_grad():
-        accuracy = (model_output.argmax(dim=-1) == y).float().mean()
-    return {
-        "loss": loss.item(),
-        "accuracy": accuracy.item(),
-        "loss_norm": loss_norm.item(),
-    }
+class Trainer:
+    def __init__(self,
+        model: nn.Module,
+        optimizer: torch.optim.Optimizer,
+    ):
+        self.model = model
+        self.optimizer = optimizer
+        
+    
+    def train_model(
+        self,
+        data_loader: torch.utils.data.DataLoader,
+        criterion,
+        n_epochs: int,
+    ) -> wandb.Run:
+        self.epoch = 0
+        self.step = 0
+        wandb_run = wandb.init(project="leaffliction")
+        for _ in range(n_epochs):
+            self.train_model_for_single_epoch(
+                data_loader,
+                criterion,
+            )
+            self.epoch += 1
+        return wandb_run #pd.DataFrame.from_records(training_data)
 
-def train_model_for_single_epoch(
-    model: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    data_loader: torch.utils.data.DataLoader,
-    criterion,
-) -> list[dict]:
-    model = model.train()
-    step_dicts = []
-    for x, y in tqdm(data_loader):
-        step_dict = training_step(model, optimizer, criterion, x, y)
-        step_dicts.append(step_dict)
-    return step_dicts
+    def train_model_for_single_epoch(
+        self,
+        data_loader: torch.utils.data.DataLoader,
+        criterion,
+    ):
+        self.model = self.model.train()
+        for x, y in tqdm(data_loader):
+            step_dict = self.train_model_for_single_step(criterion, x, y)
+            self.wandb_log_with_trainer_data(step_dict)
 
-def train_model(
-    model: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    data_loader: torch.utils.data.DataLoader,
-    criterion,
-    n_epochs: int,
-) -> pd.DataFrame:
-    training_data = []
-    for epoch in range(n_epochs):
-        epoch_data = train_model_for_single_epoch(\
-            model,
-            optimizer,
-            data_loader,
-            criterion,
+    def train_model_for_single_step(
+        self,
+        criterion: criterion_t,
+        x: Tensor,
+        y: Tensor,
+    ) -> dict[str, float]:
+        x = x.to(dtype=torch.float32, device=DEVICE)
+        y = y.to(dtype=torch.long, device=DEVICE)
+        optimizer.zero_grad()
+        with torch.autocast(DEVICE.type, torch.bfloat16):
+            model_output = self.model(x)
+            loss = criterion(model_output, y)
+            loss.backward()
+        loss_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        with torch.no_grad():
+            accuracy = (model_output.argmax(dim=-1) == y).float().mean()
+        self.step += 1
+        return {
+            "loss": loss.item(),
+            "accuracy": accuracy.item(),
+            "loss_norm": loss_norm.item(),
+        }
+
+    def wandb_log_with_trainer_data(self, data: dict):
+        trainer_data = dict(
+            epoch=self.epoch,
+            step=self.step,
+            training_samples_seen=self.step * BATCH_SIZE,
         )
-        training_data.extend(epoch_data)
-    return pd.DataFrame.from_records(training_data)
-
+        wandb.log(trainer_data | data, step=self.step, commit=True)
 
 if __name__ == "__main__":
     print("Making dataset and loader")
@@ -163,13 +184,17 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.CrossEntropyLoss()
     print("Training model")
-    step_dicts = train_model(model, optimizer, data_loader, criterion, N_EPOCHS)
-    print(
-        "nan loss value count:",
-        step_dicts["loss"].isna().value_counts(),
-        "best step:",
-        step_dicts.aggregate({"loss": "min", "accuracy": "max"}),
-        sep="\n",
+    run = (
+        Trainer(model, optimizer)
+        .train_model(data_loader, criterion, N_EPOCHS)
     )
+    # step_dicts = train_model(model, optimizer, data_loader, criterion, N_EPOCHS)
+    # print(
+    #     "nan loss value count:",
+    #     step_dicts["loss"].isna().value_counts(),
+    #     "best step:",
+    #     step_dicts.aggregate({"loss": "min", "accuracy": "max"}),
+    #     sep="\n",
+    # )
 
 
