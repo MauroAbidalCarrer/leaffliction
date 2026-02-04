@@ -18,30 +18,8 @@ LABEL2ID = {
     "Grape_healthy": 6,
     "Grape_spot": 7,
 }
-
-imgs_lst: list[Tensor] = []
-labels_lst: list[int] = []
-for img_class in os.listdir("dataset"):
-    class_idx = LABEL2ID[img_class]
-    for img in os.listdir(os.path.join("dataset", img_class)):
-        img_pth = os.path.join("dataset", img_class, img)
-        img = torchvision.io.decode_image(img_pth)
-        imgs_lst.append(img)
-        labels_lst.append(class_idx)
-
-raw_imgs = torch.stack(imgs_lst, dim=0) # dataset_size, C, H, W
-labels = torch.IntTensor(labels_lst)
-
-preprocessed_imgs = (
-    raw_imgs #dataset_size, C, H, W uint8
-    # .permute(0, 2, 3, 1) #dataset_size, H, W, C uint8
-    .to(dtype=torch.bfloat16)  #dataset_size, H, W, C float 32
-)
-preprocessed_imgs = (preprocessed_imgs - preprocessed_imgs.mean(dim=3, keepdim=True)) / preprocessed_imgs.std(dim=3, keepdim=True)
-
-dataset = torch.utils.data.TensorDataset(preprocessed_imgs, labels)
-
-img, label = dataset[:10]
+DEVICE = torch.device("cuda")
+BATCH_SIZE = 32
 
 
 class CNN(nn.Module):
@@ -86,7 +64,6 @@ class CNN(nn.Module):
                 x = nn.functional.relu(x)
         return x
 
-DEVICE = torch.device("cuda")
 
 def training_step(
     model: nn.Module,
@@ -143,26 +120,49 @@ def train_model(
         training_data.extend(epoch_data)
     return pd.DataFrame.from_records(training_data)
 
-model = (
-    CNN(
-        kernels_per_layer=[32, 64, 128, 256],
-        mlp_width=128,
-        mlp_depth=3,
-        n_classes=len(LABEL2ID)
-    )
-    .to(device=DEVICE)
-)
-BATCH_SIZE = 32
-data_loader = torch.utils.data.DataLoader(
-    dataset,
-    BATCH_SIZE,
-    shuffle=True,
-)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-criterion = nn.CrossEntropyLoss()
-step_dicts = train_model(model, optimizer, data_loader, criterion, 2)
 
-print("nan loss value count:", step_dicts["loss"].isna().value_counts())
-print("best step", step_dicts.aggregate({"loss": "min", "accuracy": "max"}))
+if __name__ == "__main__":
+    print("Making dataset and loader")
+    imgs_lst: list[Tensor] = []
+    labels_lst: list[int] = []
+    for img_class in os.listdir("dataset"):
+        class_idx = LABEL2ID[img_class]
+        for img in os.listdir(os.path.join("dataset", img_class)):
+            img_pth = os.path.join("dataset", img_class, img)
+            img = torchvision.io.decode_image(img_pth)
+            imgs_lst.append(img)
+            labels_lst.append(class_idx)
+
+    raw_imgs = torch.stack(imgs_lst, dim=0) # dataset_size, C, H, W
+    labels = torch.IntTensor(labels_lst)
+    preprocessed_imgs = (
+        raw_imgs #dataset_size, C, H, W uint8
+        .to(dtype=torch.bfloat16)  #dataset_size, H, W, C float 32
+    )
+    preprocessed_imgs = (preprocessed_imgs - preprocessed_imgs.mean(dim=3, keepdim=True)) / preprocessed_imgs.std(dim=3, keepdim=True)
+    dataset = torch.utils.data.TensorDataset(preprocessed_imgs, labels)
+    data_loader = torch.utils.data.DataLoader(
+        dataset,
+        BATCH_SIZE,
+        shuffle=True,
+    )
+
+    print("Making model")
+    model = (
+        CNN(
+            kernels_per_layer=[32, 64, 128, 256],
+            mlp_width=128,
+            mlp_depth=3,
+            n_classes=len(LABEL2ID)
+        )
+        .to(device=DEVICE)
+    )
+    print("making optim and loss")
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    criterion = nn.CrossEntropyLoss()
+    print("Training model")
+    step_dicts = train_model(model, optimizer, data_loader, criterion, 2)
+    print("nan loss value count:", step_dicts["loss"].isna().value_counts())
+    print("best step", step_dicts.aggregate({"loss": "min", "accuracy": "max"}))
 
 
