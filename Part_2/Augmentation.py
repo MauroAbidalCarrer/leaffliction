@@ -2,7 +2,7 @@ import logging
 import argparse
 import os
 from tqdm import tqdm
-from typing import Dict, Iterator, Optional, Union, Any
+from typing import Dict, Iterator, Optional, List, Union, Any
 from PIL import Image
 from pathlib import Path
 from torchvision.transforms import v2, CenterCrop
@@ -283,8 +283,11 @@ class Augmentation:
         Returns:
             Path to saved image
         """
-        image_path = Path(image_path)
-        output_dir = Path(output_dir)
+        image_path = Path(original_path)
+        if output_dir is None:
+            output_dir = Path(original_path).parent
+        else:
+            output_dir = Path(output_dir)
 
         stem = image_path.stem
         suffix = image_path.suffix
@@ -299,33 +302,40 @@ class Augmentation:
         output_dir: Optional[Union[str, Path]] = None
     ) -> List[Path]:
         """
-        Apply a transformation to an image and optionally save it.
+        Apply all transformations to an image and save them.
 
         Args:
             image_path: Path to the input image
-            transform_name: Name of the transformation to apply
-            output_path: Optional path to save the augmented image
+            output_dir: Optional directory where augmented images should be
+                       saved. If None, uses the directory of the input image.
 
         Returns:
-            Augmented PIL Image if successful, None otherwise
+            List of paths to saved augmented images
         """
-        try:
-            orig_img = self._load_image(image_path)
+        image_path = Path(image_path)
+        if output_dir is None:
+            output_dir = image_path.parent
+        else:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-            transform = self.transformations[transform_name]
-            augmented_img = transform(orig_img)
+        saved_paths: List[Path] = []
+        orig_img = self._load_image(image_path)
 
-            if output_path is not None:
-                output_path = Path(output_path)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
+        for transform_name, transform in self.transformations.items():
+            try:
+                augmented_img = transform(orig_img)
+                output_path = self._save_augmented_image(
+                    augmented_img, image_path, transform_name, output_dir
+                )
                 augmented_img.save(output_path)
+                saved_paths.append(output_path)
+            except Exception as e:
+                logging.warning(
+                    f"Failed to apply {transform_name} to {image_path}: {e}"
+                )
 
-            return augmented_img
-        except (ValueError, OSError, KeyError) as e:
-            logging.warning(
-                f"Failed to apply {transform_name} to {image_path}: {e}"
-            )
-            return None
+        return saved_paths
 
     def _apply_all_transformations(
         self,
@@ -343,26 +353,24 @@ class Augmentation:
         Returns:
             Dictionary mapping transform names to augmented PIL Images
         """
-        transform_names = list(self.transformations.keys())
-
         image_path = Path(image_path)
         if output_dir is None:
             output_dir = image_path.parent
         else:
             output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
 
         augmented_images: Dict[str, Image.Image] = {}
+        orig_img = self._load_image(image_path)
 
-        for transform_name in transform_names:
-            output_path = self._compute_output_path(
-                image_path, transform_name, output_dir
-            )
-
-            augmented_img = self._apply_transform_to_image(
-                image_path, transform_name, output_path
-            )
-            if augmented_img is not None:
+        for transform_name, transform in self.transformations.items():
+            try:
+                augmented_img = transform(orig_img)
                 augmented_images[transform_name] = augmented_img
+            except Exception as e:
+                logging.warning(
+                    f"Failed to apply {transform_name} to {image_path}: {e}"
+                )
 
         return augmented_images
 
