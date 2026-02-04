@@ -5,6 +5,7 @@ from itertools import pairwise, repeat
 import torch
 import torchvision
 import pandas as pd
+from tqdm import tqdm
 import plotly.express as px
 from torch import nn, Tensor
 
@@ -20,6 +21,7 @@ LABEL2ID = {
 }
 DEVICE = torch.device("cuda")
 BATCH_SIZE = 32
+N_EPOCHS = 3
 
 
 class CNN(nn.Module):
@@ -75,10 +77,10 @@ def training_step(
     x = x.to(dtype=torch.float32, device=DEVICE)
     y = y.to(dtype=torch.long, device=DEVICE)
     optimizer.zero_grad()
-    model_output = model(x)
-    # loss = nn.functional.cross_entropy(model_output, y)
-    loss = criterion(model_output, y)
-    loss.backward()
+    with torch.autocast(DEVICE.type, torch.bfloat16):
+        model_output = model(x)
+        loss = criterion(model_output, y)
+        loss.backward()
     loss_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
     with torch.no_grad():
@@ -97,7 +99,7 @@ def train_model_for_single_epoch(
 ) -> list[dict]:
     model = model.train()
     step_dicts = []
-    for x, y in data_loader:
+    for x, y in tqdm(data_loader):
         step_dict = training_step(model, optimizer, criterion, x, y)
         step_dicts.append(step_dict)
     return step_dicts
@@ -161,8 +163,13 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.CrossEntropyLoss()
     print("Training model")
-    step_dicts = train_model(model, optimizer, data_loader, criterion, 2)
-    print("nan loss value count:", step_dicts["loss"].isna().value_counts())
-    print("best step", step_dicts.aggregate({"loss": "min", "accuracy": "max"}))
+    step_dicts = train_model(model, optimizer, data_loader, criterion, N_EPOCHS)
+    print(
+        "nan loss value count:",
+        step_dicts["loss"].isna().value_counts(),
+        "best step:",
+        step_dicts.aggregate({"loss": "min", "accuracy": "max"}),
+        sep="\n",
+    )
 
 
