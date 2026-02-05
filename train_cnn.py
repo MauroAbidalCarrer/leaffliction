@@ -141,6 +141,7 @@ class Trainer:
         )
         wandb.log(trainer_data | data, step=self.step, commit=True)
 
+
 if __name__ == "__main__":
     print("Making dataset and loader")
     imgs_lst: list[Tensor] = []
@@ -159,7 +160,7 @@ if __name__ == "__main__":
         raw_imgs #dataset_size, C, H, W uint8
         .to(dtype=torch.bfloat16)  #dataset_size, H, W, C float 32
     )
-    preprocessed_imgs = (preprocessed_imgs - preprocessed_imgs.mean(dim=3, keepdim=True)) / preprocessed_imgs.std(dim=3, keepdim=True)
+    preprocessed_imgs = preprocessed_imgs / 255
     dataset = torch.utils.data.TensorDataset(preprocessed_imgs, labels)
     data_loader = torch.utils.data.DataLoader(
         dataset,
