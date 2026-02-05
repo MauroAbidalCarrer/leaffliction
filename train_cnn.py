@@ -8,9 +8,13 @@ from itertools import pairwise, repeat
 
 import wandb
 import torch
+from torch.utils.data import (
+    Subset,
+    DataLoader,
+    TensorDataset,
+)
 import torchvision
 from tqdm import tqdm
-import plotly.express as px
 from torch import nn, Tensor
 
 
@@ -84,20 +88,40 @@ class Trainer:
     
     def train_model(
         self,
-        data_loader: torch.utils.data.DataLoader,
+        train_dl: torch.utils.data.DataLoader,
+        val_dl: torch.utils.data.DataLoader,
         criterion,
         n_epochs: int,
     ) -> wandb.Run:
         self.epoch = 0
         self.step = 0
         wandb_run = wandb.init(project="leaffliction")
+        self.eval_model(val_dl)
         for _ in range(n_epochs):
             self.train_model_for_single_epoch(
-                data_loader,
+                train_dl,
                 criterion,
             )
-            self.epoch += 1
+            self.eval_model(val_dl)
         return wandb_run
+
+    @torch.no_grad
+    def eval_model(self, data_loader: DataLoader):
+        self.model = self.model.eval()
+        accuracy = 0
+        for x, y in data_loader:
+            x, y = preprocess_batch(x, y)
+            with torch.autocast(DEVICE.type, torch.bfloat16):
+                model_output = self.model(x)
+                accuracy += (
+                    (model_output.argmax(dim=-1) == y)
+                    .float()
+                    .mean()
+                    .item()
+                    / len(data_loader)
+                )
+        self.wandb_log_with_prefix({"accuracy": accuracy}, "validation")
+        return accuracy
 
     def train_model_for_single_epoch(
         self,
@@ -107,7 +131,8 @@ class Trainer:
         self.model = self.model.train()
         for x, y in tqdm(data_loader):
             step_dict = self.train_model_for_single_step(criterion, x, y)
-            self.wandb_log_with_trainer_data(step_dict)
+            self.wandb_log_with_prefix(step_dict, "training")
+        self.epoch += 1
 
     def train_model_for_single_step(
         self,
@@ -115,8 +140,7 @@ class Trainer:
         x: Tensor,
         y: Tensor,
     ) -> dict[str, float]:
-        x = x.to(dtype=torch.float32, device=DEVICE)
-        y = y.to(dtype=torch.long, device=DEVICE)
+        x, y = preprocess_batch(x, y)
         self.optimizer.zero_grad()
         with torch.autocast(DEVICE.type, torch.bfloat16):
             model_output = self.model(x)
@@ -133,17 +157,18 @@ class Trainer:
             "loss_norm": loss_norm.item(),
         }
 
-    def wandb_log_with_trainer_data(self, data: dict):
-        trainer_data = dict(
-            epoch=self.epoch,
-            step=self.step,
-            training_samples_seen=self.step * BATCH_SIZE,
-        )
-        wandb.log(trainer_data | data, step=self.step, commit=True)
+    def wandb_log_with_prefix(self, data: dict, prefix: str):
+        data = {prefix + "/" + k: v for k, v in data.items()}
+        data["epoch"] = self.epoch
+        data["step"] = self.step
+        data["training_samples_seen"] = self.step * BATCH_SIZE
+        if prefix == "validation":
+            print("log at step", self.step)
+            print(data)
+        wandb.log(data, step=self.step, commit=True)
 
 
-if __name__ == "__main__":
-    print("Making dataset and loader")
+def get_raw_dataset() -> dict[str, Tensor]:
     imgs_lst: list[Tensor] = []
     labels_lst: list[int] = []
     for img_class in os.listdir("dataset"):
@@ -156,16 +181,50 @@ if __name__ == "__main__":
 
     raw_imgs = torch.stack(imgs_lst, dim=0) # dataset_size, C, H, W
     labels = torch.IntTensor(labels_lst)
-    preprocessed_imgs = (
-        raw_imgs #dataset_size, C, H, W uint8
-        .to(dtype=torch.bfloat16)  #dataset_size, H, W, C float 32
+    
+    return raw_imgs, labels
+
+
+def mk_data_loaders(
+    x: Tensor,
+    y: Tensor,
+    val_fraction=0.2,
+    batch_size=BATCH_SIZE,
+    seed: int=42
+) -> dict[str, Tensor]:
+    torch.manual_seed(seed)
+
+    train_idx = []
+    val_idx = []
+
+    for cls in torch.unique(y):
+        cls_idx = torch.where(y == cls)[0]
+        cls_idx = cls_idx[torch.randperm(len(cls_idx))]
+
+        n_val = int(len(cls_idx) * val_fraction)
+        val_idx.append(cls_idx[:n_val])
+        train_idx.append(cls_idx[n_val:])
+
+    train_idx = torch.cat(train_idx)
+    val_idx = torch.cat(val_idx)
+    full_dataset = TensorDataset(x, y)
+    train_dataset = Subset(full_dataset, train_idx)
+    val_dataset = Subset(full_dataset, val_idx)
+    return (
+        DataLoader(train_dataset, batch_size, shuffle=True),
+        DataLoader(val_dataset, batch_size),
     )
-    dataset = torch.utils.data.TensorDataset(preprocessed_imgs, labels)
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        BATCH_SIZE,
-        shuffle=True,
+
+def preprocess_batch(x: Tensor, y: Tensor) -> tuple[Tensor, Tensor]:
+    return (
+        x.to(device=DEVICE, dtype=torch.bfloat16),
+        y.to(device=DEVICE, dtype=torch.long),
     )
+
+if __name__ == "__main__":
+    print("Making dataset and loader")
+    raw_x, raw_y = get_raw_dataset()
+    train_dl, val_dl = mk_data_loaders(raw_x, raw_y)
 
     print("Making model")
     model = (
@@ -183,6 +242,6 @@ if __name__ == "__main__":
     print("Training model")
     run = (
         Trainer(model, optimizer)
-        .train_model(data_loader, criterion, N_EPOCHS)
+        .train_model(train_dl, val_dl, criterion, N_EPOCHS)
     )
 
