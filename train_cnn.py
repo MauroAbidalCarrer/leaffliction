@@ -1,21 +1,18 @@
 import os
 from typing import (
-    Optional,
     Callable,
-    Literal,
     Tuple,
     Dict,
 )
-from typing import Any
 from itertools import pairwise, repeat
 
 import wandb
 import torch
 import torchvision
-import pandas as pd
 from tqdm import tqdm
 import plotly.express as px
 from torch import nn, Tensor
+
 
 LABEL2ID = {
     "Apple_Black_rot": 0,
@@ -100,7 +97,7 @@ class Trainer:
                 criterion,
             )
             self.epoch += 1
-        return wandb_run #pd.DataFrame.from_records(training_data)
+        return wandb_run
 
     def train_model_for_single_epoch(
         self,
@@ -188,13 +185,4 @@ if __name__ == "__main__":
         Trainer(model, optimizer)
         .train_model(data_loader, criterion, N_EPOCHS)
     )
-    # step_dicts = train_model(model, optimizer, data_loader, criterion, N_EPOCHS)
-    # print(
-    #     "nan loss value count:",
-    #     step_dicts["loss"].isna().value_counts(),
-    #     "best step:",
-    #     step_dicts.aggregate({"loss": "min", "accuracy": "max"}),
-    #     sep="\n",
-    # )
-
 
