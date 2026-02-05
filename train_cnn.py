@@ -162,10 +162,7 @@ class Trainer:
         data["epoch"] = self.epoch
         data["step"] = self.step
         data["training_samples_seen"] = self.step * BATCH_SIZE
-        if prefix == "validation":
-            print("log at step", self.step)
-            print(data)
-        wandb.log(data, step=self.step, commit=True)
+        wandb.log(data, commit=True)
 
 
 def get_raw_dataset() -> dict[str, Tensor]:
