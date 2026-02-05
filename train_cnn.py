@@ -117,13 +117,13 @@ class Trainer:
     ) -> dict[str, float]:
         x = x.to(dtype=torch.float32, device=DEVICE)
         y = y.to(dtype=torch.long, device=DEVICE)
-        optimizer.zero_grad()
+        self.optimizer.zero_grad()
         with torch.autocast(DEVICE.type, torch.bfloat16):
             model_output = self.model(x)
             loss = criterion(model_output, y)
             loss.backward()
-        loss_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        loss_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        self.optimizer.step()
         with torch.no_grad():
             accuracy = (model_output.argmax(dim=-1) == y).float().mean()
         self.step += 1
