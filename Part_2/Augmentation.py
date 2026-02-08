@@ -1,12 +1,13 @@
 import logging
 import argparse
-import os
+import shutil
 from tqdm import tqdm
-from typing import Dict, Iterator, Optional, List, Union, Any
+from itertools import groupby, chain
+from typing import Dict, Optional, List, Union, Any
 from PIL import Image
 from pathlib import Path
-from torchvision.transforms import v2, CenterCrop
-
+from torchvision.transforms import v2
+import torch
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -18,7 +19,12 @@ def plot_augmentations_grid(
     cols: int = 3,
 ):
     """
-    Plot original image and its augmentations in a grid using Plotly.
+    Plot original image and augmentations in a grid.
+
+    Args:
+        original_img: Original PIL Image
+        augmented_images: Dict mapping transform names to augmented images
+        cols: Number of columns in the grid
     """
 
     all_images = {"Original": original_img, **augmented_images}
@@ -55,68 +61,53 @@ def plot_augmentations_grid(
     fig.show()
 
 
-class Crop(CenterCrop):
+class Crop(v2.Transform):
     def __init__(
-        self, resize_target: int = 256, crop_ratio: float = 0.6
+        self, resize_target: int = 256, crop_ratio: float = 0.8
     ) -> None:
         """
-        Initialize Crop transform with parameters for computing crop size.
-
         Args:
-            resize_target: Target size for the smaller dimension after
-                resize (default: 256)
-            crop_ratio: Ratio of crop size to resize target (default: 0.80)
+            resize_target: Target size for smaller dimension after resize
+            crop_ratio: Ratio of crop size to resize target
         """
-
-        super().__init__(size=1)
+        super().__init__()
         self.resize_target: int = resize_target
         self.crop_ratio: float = crop_ratio
 
     @staticmethod
     def _compute_crop_params(
         resize_target: int = 256,
-        crop_ratio: float = 0.80
+        crop_ratio: float = 0.8
     ) -> int:
         """
-        Compute resize and crop parameters based on image dimensions.
-
         Args:
-            resize_target: Target size for the smaller dimension after
-                resize (default: 256)
-            crop_ratio: Ratio of crop size to resize target (default: 0.80)
+            resize_target: Target size for smaller dimension after resize
+            crop_ratio: Ratio of crop size to resize target
 
         Returns:
-            crop_size: Size for CenterCrop transform (int or tuple)
+            Crop size for CenterCrop transform
         """
         crop_size: int = int(resize_target * crop_ratio)
         return crop_size
 
-    def __call__(self, img: Image.Image) -> Image.Image:
+    def __call__(self, img: torch.Tensor) -> torch.Tensor:
         """
-        Override __call__ to compute crop size dynamically from image
-        dimensions.
-
         Args:
-            img: PIL Image
+            img: Tensor image of shape (C, H, W)
 
         Returns:
-            Cropped PIL Image
+            Cropped tensor image
         """
-        width, height = img.size
-
         crop_size: int = self._compute_crop_params(
             self.resize_target, self.crop_ratio
         )
 
-        crop_transform: CenterCrop = CenterCrop(size=crop_size)
-
+        crop_transform: v2.CenterCrop = v2.CenterCrop(size=crop_size)
         return crop_transform(img)
 
 
 class Augmentation:
-    """
-    A class for applying various transformations to images.
-    """
+    """Apply transformations to images."""
 
     def __init__(
         self,
@@ -128,22 +119,14 @@ class Augmentation:
         flash: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Initialize the Augmentation class with transformation(s).
-
         Args:
-            rotation: Dict with 'degrees' key. If None or 'degrees' not
-                provided, defaults to (-180, 180).
-            blur: Dict with 'kernel_size' (default: 7) and 'sigma'
-                (default: 1.5) keys.
-            jitter: Dict with 'brightness' (default: 0.2), 'contrast'
-                (default: 0.8), 'saturation' (default: 0.2), 'hue'
-                (default: 0.1) keys.
-            crop: Dict with 'resize_target' (default: 256) and 'crop_ratio'
-                (default: 0.80) keys.
-            perspective: Dict with 'distortion_scale' (default: 0.3) key.
-            flash: Dict with 'brightness' (default: (2.0, 2.0)),
-                'contrast' (default: (0.8, 1.0)), 'saturation'
-                (default: (0.7, 1.0)), and 'p' (default: 0.5) keys.
+            rotation: Dict with 'degrees' key
+            blur: Dict with 'kernel_size' and 'sigma' keys
+            jitter: Dict with 'brightness', 'contrast', 'saturation',
+                'hue' keys
+            crop: Dict with 'resize_target' and 'crop_ratio' keys
+            perspective: Dict with 'distortion_scale' key
+            flash: Dict with 'brightness', 'contrast', 'saturation', 'p' keys
         """
         rotation = rotation or {}
         blur = blur or {}
@@ -195,6 +178,9 @@ class Augmentation:
             p=flash.get('p', 0.5)
         )
 
+        self._to_image = v2.ToImage()
+        self._to_dtype = v2.ToDtype(torch.float32, scale=True)
+
         self.transformations: Dict[str, Any] = {
             'Rotation': self.rotation,
             'Blur': self.blur,
@@ -204,246 +190,19 @@ class Augmentation:
             'Perspective': self.perspective,
         }
 
-    # Instance methods
-    def _load_image(self, img: Union[str, Path, Image.Image]) -> Image.Image:
-        """Load image from path or return PIL Image."""
-        if isinstance(img, (str, Path)):
-            try:
-                return Image.open(img)
-            except (
-                FileNotFoundError,
-                OSError,
-                Image.UnidentifiedImageError
-            ) as e:
-                raise ValueError(
-                    f"Cannot load image from {img}: {e}"
-                ) from e
-        return img
-
-    def _apply_transform(
-        self, img: Union[str, Path, Image.Image], transform: Any
-    ) -> Image.Image:
-        """Apply a single transformation."""
-        img = self._load_image(img)
-        return transform(img)
-
-    def apply(
-        self,
-        images: Union[
-            Image.Image, List[Image.Image], List[Union[str, Path]]
-        ],
-        transform_name: str
-    ) -> Union[Image.Image, List[Image.Image]]:
-        """
-        Apply a specific transformation to images.
-
-        Args:
-            images: A single PIL Image, a list of PIL Images, or a list of
-                image paths
-            transform_name: Name of the transformation to apply
-
-        Returns:
-            If a single image is provided, returns a single transformed
-            image. If a list is provided, returns a list of transformed
-            images.
-        """
-        if transform_name not in self.transformations:
-            raise ValueError(f"Unknown transformation: {transform_name}")
-
-        transform = self.transformations[transform_name]
-
-        if isinstance(images, Image.Image):
-            return self._apply_transform(images, transform)
-
-        if isinstance(images, (list, tuple)):
-            return [
-                self._apply_transform(img, transform) for img in images
-            ]
-
-        raise TypeError(
-            "images must be a PIL Image, a list of PIL Images, "
-            "or a list of image paths"
-        )
-
-    def _save_augmented_image(
-        self,
-        image: Image.Image,
-        original_path: Union[str, Path],
-        transform_name: str,
-        output_dir: Optional[Union[str, Path]] = None
-    ) -> Path:
-        """
-        Compute the output path for an augmented image.
-
-        Args:
-            image_path: Path to the original image
-            transform_name: Name of the transformation to apply
-            output_dir: Directory where the augmented image should be saved
-
-        Returns:
-            Path to saved image
-        """
-        image_path = Path(original_path)
-        if output_dir is None:
-            output_dir = Path(original_path).parent
-        else:
-            output_dir = Path(output_dir)
-
-        stem = image_path.stem
-        suffix = image_path.suffix
-        new_filename = f"{stem}_{transform_name}{suffix}"
-        output_path = output_dir / new_filename
-
-        return output_path
-
-    def process_image(
-        self,
-        image_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None
-    ) -> List[Path]:
-        """
-        Apply all transformations to an image and save them.
-
-        Args:
-            image_path: Path to the input image
-            output_dir: Optional directory where augmented images should be
-                       saved. If None, uses the directory of the input image.
-
-        Returns:
-            List of paths to saved augmented images
-        """
-        image_path = Path(image_path)
-        if output_dir is None:
-            output_dir = image_path.parent
-        else:
-            output_dir = Path(output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-        saved_paths: List[Path] = []
-        orig_img = self._load_image(image_path)
-
-        for transform_name, transform in self.transformations.items():
-            try:
-                augmented_img = transform(orig_img)
-                output_path = self._save_augmented_image(
-                    augmented_img, image_path, transform_name, output_dir
-                )
-                augmented_img.save(output_path)
-                saved_paths.append(output_path)
-            except Exception as e:
-                logging.warning(
-                    f"Failed to apply {transform_name} to {image_path}: {e}"
-                )
-
-        return saved_paths
-
-    def _apply_all_transformations(
-        self,
-        image_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None,
-    ) -> Dict[str, Image.Image]:
-        """
-        Apply all transformations to an image and save them.
-
-        Args:
-            image_path: Path to the input image
-            output_dir: Optional directory where augmented images should be
-                       saved. If None, uses the directory of the input image.
-
-        Returns:
-            Dictionary mapping transform names to augmented PIL Images
-        """
-        image_path = Path(image_path)
-        if output_dir is None:
-            output_dir = image_path.parent
-        else:
-            output_dir = Path(output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-        augmented_images: Dict[str, Image.Image] = {}
-        orig_img = self._load_image(image_path)
-
-        for transform_name, transform in self.transformations.items():
-            try:
-                augmented_img = transform(orig_img)
-                augmented_images[transform_name] = augmented_img
-            except Exception as e:
-                logging.warning(
-                    f"Failed to apply {transform_name} to {image_path}: {e}"
-                )
-
-        return augmented_images
-
-    def _copy_dataset(
-        self,
-        dataset_path: Union[str, Path],
-        output_dir: Union[str, Path],
-        images: Iterator[Path]
-    ) -> None:
-        """Copy all images to output directory preserving structure."""
-
-        for image in tqdm(
-            images,
-            desc=f'Copying images from {dataset_path} to {output_dir}',
-            total=len(os.listdir(dataset_path))
-        ):
-            try:
-                save_path = Path(
-                    f'{output_dir}/',
-                    image.parent.stem
-                )
-                os.makedirs(save_path, exist_ok=True)
-
-                img = self._load_image(image)
-                output_path = save_path / image.name
-                img.save(output_path)
-            except Exception as e:
-                logging.warning(f"Failed to copy {image}: {e}")
-                continue
-
-    def augment_dataset(
-        self,
-        dataset_path: Union[str, Path],
-        output_dir: Union[str, Path] = "augmented_directory"
-    ) -> None:
-        """Copy dataset and apply all transformations to each image."""
-        dataset_path = Path(dataset_path)
-        output_dir = Path(output_dir)
-
-        if not dataset_path.exists() or not dataset_path.is_dir():
-            raise ValueError(f"Dataset path does not exist: {dataset_path}")
-
-        images = Path(dataset_path).glob('**/*.JPG')
-
-        self._copy_dataset(dataset_path, output_dir, images)
-
-        for subdirectory_class in tqdm(
-            Path(dataset_path).iterdir(),
-            desc=f'Augmenting images from {dataset_path}',
-            total=len(os.listdir(dataset_path))
-        ):
-            if not subdirectory_class.is_dir():
-                continue
-
-            rel_path = subdirectory_class.relative_to(dataset_path)
-            output_category_dir = output_dir / rel_path
-
-            images = list(subdirectory_class.glob('**/*.JPG'))
-
-            for image_path in images:
-                try:
-                    self._apply_all_transformations(
-                        image_path,
-                        output_category_dir)
-                except Exception as e:
-                    logging.warning(f"Failed to augment {image_path}: {e}")
-                    continue
-
     # Static methods
     @staticmethod
     def _init_optional(transform_class: type, **kwargs: Any) -> Any:
-        """Initialize a transform class, only passing non-None keyword
-        arguments."""
+        """
+        Initialize a transform class, only passing non-None keyword arguments.
+
+        Args:
+            transform_class: Transform class to instantiate
+            **kwargs: Keyword arguments for the transform class
+
+        Returns:
+            Instantiated transform object
+        """
         try:
             not_null_filtered_kwargs: Dict[str, Any] = {
                 k: v for k, v in kwargs.items() if v is not None
@@ -465,6 +224,183 @@ class Augmentation:
                 "Using default parameters instead."
             )
             return transform_class()
+
+    # Instance methods
+    def _load_image(self, img: Union[str, Path, Image.Image]) -> Image.Image:
+        """
+        Args:
+            img: Image path or PIL Image
+
+        Returns:
+            PIL Image
+        """
+        if isinstance(img, (str, Path)):
+            try:
+                return Image.open(img)
+            except (
+                FileNotFoundError,
+                OSError,
+                Image.UnidentifiedImageError
+            ) as e:
+                raise ValueError(
+                    f"Cannot load image from {img}: {e}"
+                ) from e
+        return img
+
+    def _save_augmented_image(
+        self,
+        image: Image.Image,
+        original_path: Union[str, Path],
+        transform_name: str,
+        output_dir: Optional[Union[str, Path]] = None
+    ) -> None:
+        """
+        Args:
+            image: Augmented PIL Image to save
+            original_path: Path to the original image
+            transform_name: Name of the transformation applied
+            output_dir: Directory where the augmented image should be saved
+        """
+        try:
+            if output_dir:
+                transformed_image_path = (
+                    f'{output_dir}/{original_path.name}_{transform_name}.JPG'
+                )
+            else:
+                transformed_image_path = (
+                    f'{original_path.name}_{transform_name}.JPG'
+                )
+            image.save(transformed_image_path)
+        except Exception as e:
+            print(f'Error saving augmented image: {e}')
+
+    def apply_all_transformations(
+        self,
+        image_path: Union[str, Path],
+        output_dir: Optional[Union[str, Path]] = None,
+    ) -> Dict[str, Image.Image]:
+        """
+        Apply all transformations to an image and save them.
+
+        Args:
+            image_path: Path to the input image
+            output_dir: Directory where augmented images should be saved
+        """
+        orig_pil = self._load_image(image_path)
+
+        saved_paths: Dict[str, Image.Image] = {}
+
+        for transform_name, transform in self.transformations.items():
+            try:
+                augmented_img = transform(orig_pil)
+                self._save_augmented_image(
+                    augmented_img,
+                    image_path,
+                    transform_name,
+                    output_dir
+                )
+                saved_paths[transform_name] = augmented_img
+            except Exception as e:
+                logging.warning(
+                    f"Failed to apply {transform_name} to {image_path}: {e}"
+                )
+        return saved_paths
+
+    def _copy_dataset(
+        self,
+        dataset_path: Union[str, Path],
+        output_dir: Union[str, Path],
+    ) -> None:
+        """
+        Copy all images preserving class directory structure.
+
+        Args:
+            dataset_path: Source dataset path
+            output_dir: Destination directory
+        """
+
+        dataset_path = Path(dataset_path)
+        output_dir = Path(output_dir)
+
+        original_images = list(dataset_path.rglob("*.JPG"))
+
+        for img in tqdm(
+            original_images,
+            desc=f'Copying images from {dataset_path} to {output_dir}',
+        ):
+            try:
+                class_dir = img.parent.name
+                target_dir = output_dir / class_dir
+                target_dir.mkdir(parents=True, exist_ok=True)
+                target_path = target_dir / img.name
+                shutil.copy2(img, target_path)
+            except Exception as e:
+                logging.warning(f"Failed to copy {img}: {e}")
+                continue
+
+    def _get_class_images_and_output_dir(
+        self,
+        dataset_path: Path,
+        output_dir: Path
+    ) -> List[Dict[str, Union[Path, List[Path]]]]:
+
+        images = sorted(
+            dataset_path.rglob("*.JPG"),
+            key=lambda p: p.parent.name
+        )
+
+        result = []
+        for class_dir, group in groupby(images, key=lambda p: p.parent.name):
+            result.append({
+                "output_dir": output_dir / class_dir,
+                "images": list(group)
+            })
+
+        return result
+
+    def augment_dataset(
+        self,
+        dataset_path: Union[str, Path],
+        output_dir: Union[str, Path] = "augmented_directory"
+    ) -> None:
+        """
+        Copy dataset and apply all transformations to each image.
+
+        Args:
+            dataset_path: Path to the dataset directory
+            output_dir: Output directory for augmented images
+        """
+        dataset_path = Path(dataset_path)
+        output_dir = Path(output_dir)
+
+        if not dataset_path.exists() or not dataset_path.is_dir():
+            raise ValueError(f"Dataset path does not exist: {dataset_path}")
+
+        self._copy_dataset(dataset_path, output_dir)
+
+        class_groups = self._get_class_images_and_output_dir(
+            dataset_path, output_dir
+        )
+
+        all_images = list(chain.from_iterable(
+            group["images"] for group in class_groups
+        ))
+
+        with tqdm(total=len(all_images), desc="Augmenting dataset") as pbar:
+            for class_group in class_groups:
+                output_category_dir = class_group["output_dir"]
+                images = class_group["images"]
+
+                for image_path in images:
+                    try:
+                        self.apply_all_transformations(
+                            image_path,
+                            output_category_dir
+                        )
+                    except Exception as e:
+                        logging.warning(f"Failed to augment {image_path}: {e}")
+                    finally:
+                        pbar.update(1)
 
 
 def main() -> None:
@@ -495,16 +431,15 @@ def main() -> None:
         return
 
     if input_path.is_file():
-        print(f"Applying transformations to {input_path.name}...")
-        augmented_images = augmentation._apply_all_transformations(
-            input_path
-        )
-        if augmented_images:
-            try:
-                original_img = augmentation._load_image(input_path)
-                plot_augmentations_grid(original_img, augmented_images)
-            except Exception as e:
-                logging.warning(f"Failed to plot images: {e}")
+        print(f"Applying transformations to {input_path}...")
+        try:
+            augmented_images = augmentation.apply_all_transformations(
+                input_path
+            )
+            original_img = augmentation._load_image(input_path)
+            plot_augmentations_grid(original_img, augmented_images)
+        except Exception as e:
+            logging.warning(f"Failed to augmented single image: {e}")
 
     elif input_path.is_dir():
         try:
