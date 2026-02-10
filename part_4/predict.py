@@ -13,11 +13,9 @@ from leaffliction.models import CNN
 from leaffliction.utils import load_image
 
 
-def preprocess_image(img: torch.Tensor) -> torch.Tensor:
-    """Preprocess image for model inference (same as training)."""
-    # Convert to bfloat16 and move to device, add batch dimension
-    img = img.to(device=DEVICE, dtype=torch.bfloat16)
-    img = img.unsqueeze(0)  # Add batch dimension: (1, C, H, W)
+def process_image(img_path: str) -> torch.Tensor:
+    img = torchvision.io.decode_image(p)
+    img = img.permute(1, 2, 0) / 255
     return img
 
 
@@ -122,11 +120,12 @@ def main():
     if not os.path.exists(args.model):
         sys.exit(1)
     
-    original_img = load_image(args.image_path)
-    model = load_model(args.model)
-    preprocessed_img = preprocess_image(original_img)
-    predicted_label, confidence = predict(model, preprocessed_img)
-    display_results(original_img, predicted_label, confidence)
+    # original_img = load_image(args.image_path)
+    # model = load_model(args.model)
+    processed_img = process_image(args.image_path)
+    print(processed_img)
+    # predicted_label, confidence = predict(model, preprocessed_img)
+    # display_results(original_img, predicted_label, confidence)
 
 
 if __name__ == "__main__":
