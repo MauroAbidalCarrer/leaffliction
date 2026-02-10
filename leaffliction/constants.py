@@ -11,6 +11,8 @@ LABEL2ID = {
     "Grape_spot": 7,
 }
 
+ID2LABEL = {v: k for k, v in LABEL2ID.items()}
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 PATHS = {
