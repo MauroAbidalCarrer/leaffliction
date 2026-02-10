@@ -1,0 +1,7 @@
+-split train_cnn script into:
+  - leaffliction/models.py (avec un s au cas ou on en utilise plusieurs) avec juste la class CNN
+  - leaffliction/training.py avec la classe trainer
+  - hyper parametres du model et du trainer dans leaffliction/constants.py dans deux dictionnaires
+  - part_4/train_model, meme chose que le script, imports from models.py, constants.py, data.py and training.py, ensures that the dataset is present, saves the model as a .pt file and then zips it to be subject complient(uses hyper parameters from constants.py)
+  - part_4/predict.py, unzips the checkpoint and then loads the pt file (uses hyper parameters from constants.py), does whatever the subject demands.
+  - then rm train_cnn
