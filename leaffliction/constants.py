@@ -1,7 +1,5 @@
 import torch
 
-DATASET_URL = "https://cdn.intra.42.fr/document/document/42144/leaves.zip"
-
 LABEL2ID = {
     "Apple_Black_rot": 0,
     "Apple_rust": 1,
@@ -15,10 +13,29 @@ LABEL2ID = {
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-BATCH_SIZE = 32
+PATHS = {
+    "dataset_url": "https://cdn.intra.42.fr/document/document/42144/leaves.zip",
+    "dataset_dir": "dataset",
+    "model": "model.pt",
+    "zip": "model.zip",
+}
 
-N_EPOCHS = 3
+MODEL = {
+    "kernels_per_layer": [32, 64, 128, 256],
+    "mlp_width": 128,
+    "mlp_depth": 3,
+    "n_classes": len(LABEL2ID),
+}
 
-MODEL_PATH = "model.pt"
+TRAINING = {
+    "batch_size": 32,
+    "n_epochs": 3,
+    "learning_rate": 1e-4,
+    "optimizer": "Adam",
+    "gradient_clip_norm": 1.0,
+}
 
-ZIP_PATH = "model.zip"
+DATA = {
+    "val_fraction": 0.2,
+    "seed": 42,
+}

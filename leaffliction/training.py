@@ -11,7 +11,7 @@ from torch.utils.data import (
 )
 from tqdm import tqdm
 from leaffliction.dataset import preprocess_batch
-from leaffliction.constants import BATCH_SIZE, DEVICE
+from leaffliction.constants import TRAINING, DEVICE
 
 criterion_t = Callable[[Tensor, Tensor], Tuple[Tensor, Dict[str, Tensor]]]
 
@@ -84,7 +84,10 @@ class Trainer:
             model_output = self.model(x)
             loss = criterion(model_output, y)
             loss.backward()
-        loss_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        loss_norm = torch.nn.utils.clip_grad_norm_(
+            self.model.parameters(),
+            TRAINING["gradient_clip_norm"]
+        )
         self.optimizer.step()
         with torch.no_grad():
             accuracy = (model_output.argmax(dim=-1) == y).float().mean()
@@ -99,5 +102,5 @@ class Trainer:
         data = {prefix + "/" + k: v for k, v in data.items()}
         data["epoch"] = self.epoch
         data["step"] = self.step
-        data["training_samples_seen"] = self.step * BATCH_SIZE
+        data["training_samples_seen"] = self.step * TRAINING["batch_size"]
         wandb.log(data, commit=True)

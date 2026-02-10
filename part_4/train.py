@@ -5,9 +5,9 @@ from torch import nn
 from leaffliction.constants import (
     LABEL2ID,
     DEVICE,
-    N_EPOCHS,
-    MODEL_PATH,
-    ZIP_PATH,
+    PATHS,
+    MODEL,
+    TRAINING,
 )
 from leaffliction.dataset import get_raw_dataset, mk_data_loaders, ensure_dataset_present
 from leaffliction.models import CNN
@@ -23,30 +23,33 @@ if __name__ == "__main__":
     print("Making model")
     model = (
         CNN(
-            kernels_per_layer=[32, 64, 128, 256],
-            mlp_width=128,
-            mlp_depth=3,
-            n_classes=len(LABEL2ID)
+            kernels_per_layer=MODEL["kernels_per_layer"],
+            mlp_width=MODEL["mlp_width"],
+            mlp_depth=MODEL["mlp_depth"],
+            n_classes=MODEL["n_classes"]
         )
         .to(device=DEVICE)
     )
     
     print("Making optim and loss")
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=TRAINING["learning_rate"]
+    )
     
     criterion = nn.CrossEntropyLoss()
     
     print("Training model")
     run = (
         Trainer(model, optimizer)
-        .train_model(train_dl, val_dl, criterion, N_EPOCHS)
+        .train_model(train_dl, val_dl, criterion, TRAINING["n_epochs"])
     )
     
-    print(f"Saving model to {MODEL_PATH}")
-    torch.save(model.state_dict(), MODEL_PATH)
+    print(f"Saving model to {PATHS['model']}")
+    torch.save(model.state_dict(), PATHS["model"])
     
-    print(f"Zipping model to {ZIP_PATH}")
-    with zipfile.ZipFile(ZIP_PATH, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write(MODEL_PATH, os.path.basename(MODEL_PATH))
+    print(f"Zipping model to {PATHS['zip']}")
+    with zipfile.ZipFile(PATHS["zip"], 'w', zipfile.ZIP_DEFLATED) as zipf:
+        zipf.write(PATHS["model"], os.path.basename(PATHS["model"]))
     
     print("Model saved and zipped successfully!")

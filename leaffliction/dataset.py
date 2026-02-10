@@ -44,20 +44,19 @@ def unzipData():
 
 
 def replaceData():
-    if os.path.exists("dataset"):
-        shutil.rmtree("dataset")
-        print("Old data removed")
-    os.rename("images", "dataset")
-    os.remove("dataset.zip")
-
+	if os.path.exists(PATHS["dataset_dir"]):
+		shutil.rmtree(PATHS["dataset_dir"])
+		print("Old data removed")
+	os.rename("images", PATHS["dataset_dir"])
+	os.remove("dataset.zip")
 
 def get_raw_dataset() -> dict[str, Tensor]:
     imgs_lst: list[Tensor] = []
     labels_lst: list[int] = []
-    for img_class in os.listdir("dataset"):
+    for img_class in os.listdir(PATHS["dataset_dir"]):
         class_idx = LABEL2ID[img_class]
         for img in os.listdir(os.path.join("dataset", img_class)):
-            img_pth = os.path.join("dataset", img_class, img)
+            img_pth = os.path.join(PATHS["dataset_dir"], img_class, img)
             img = torchvision.io.decode_image(img_pth)
             imgs_lst.append(img)
             labels_lst.append(class_idx)
@@ -71,9 +70,9 @@ def get_raw_dataset() -> dict[str, Tensor]:
 def mk_data_loaders(
     x: Tensor,
     y: Tensor,
-    val_fraction=0.2,
-    batch_size=BATCH_SIZE,
-    seed: int=42
+    val_fraction=DATA["val_fraction"],
+    batch_size=TRAINING["batch_size"],
+    seed: int=DATA["seed"]
 ) -> dict[str, Tensor]:
     torch.manual_seed(seed)
 
@@ -106,7 +105,7 @@ def preprocess_batch(x: Tensor, y: Tensor) -> tuple[Tensor, Tensor]:
 
 def ensure_dataset_present():
     """Check if dataset exists, download if not present."""
-    if not os.path.exists("dataset"):
+    if not os.path.exists(PATHS["dataset_dir"]):
         print("Dataset not found. Downloading...")
         downloadZip()
     else:
