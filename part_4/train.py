@@ -6,8 +6,9 @@ from leaffliction.constants import (
     LABEL2ID,
     DEVICE,
     PATHS,
-    MODEL,
     TRAINING,
+    DFLT_MODEL_KWARGS,
+    DFLT_OPTIMIZER_KWARGS,
 )
 from leaffliction.dataset import get_raw_dataset, mk_data_loaders, ensure_dataset_present
 from leaffliction.models import CNN
@@ -21,21 +22,10 @@ if __name__ == "__main__":
     train_dl, val_dl = mk_data_loaders(raw_x, raw_y)
 
     print("Making model")
-    model = (
-        CNN(
-            kernels_per_layer=MODEL["kernels_per_layer"],
-            mlp_width=MODEL["mlp_width"],
-            mlp_depth=MODEL["mlp_depth"],
-            n_classes=MODEL["n_classes"]
-        )
-        .to(device=DEVICE)
-    )
+    model = CNN(**DFLT_MODEL_KWARGS).to(device=DEVICE)
     
     print("Making optim and loss")
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=TRAINING["learning_rate"]
-    )
+    optimizer = torch.optim.Adam(model.parameters(), **DFLT_OPTIMIZER_KWARGS)
     
     criterion = nn.CrossEntropyLoss()
     

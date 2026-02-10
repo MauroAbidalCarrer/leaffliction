@@ -39,3 +39,14 @@ DATA = {
     "val_fraction": 0.2,
     "seed": 42,
 }
+
+DFLT_MODEL_KWARGS = {
+    "kernels_per_layer": MODEL["kernels_per_layer"],
+    "mlp_width": MODEL["mlp_width"],
+    "mlp_depth": MODEL["mlp_depth"],
+    "n_classes": MODEL["n_classes"],
+}
+
+DFLT_OPTIMIZER_KWARGS = {
+    "lr": TRAINING["learning_rate"],
+}
