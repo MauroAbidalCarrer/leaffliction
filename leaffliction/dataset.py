@@ -12,8 +12,8 @@ from torch.utils.data import (
 from torch import Tensor
 
 import leaffliction.constants as consts
-from leaffliction.utils import load_image
 from leaffliction.constants import LABEL2ID, DEVICE, TRAINING, DATA, PATHS
+from leaffliction.utils import load_image_as_tensor
 
 def downloadZip():
     if os.path.exists("dataset.zip"):
@@ -57,7 +57,7 @@ def get_raw_dataset() -> dict[str, Tensor]:
         class_idx = LABEL2ID[img_class]
         for img in os.listdir(os.path.join("dataset", img_class)):
             img_pth = os.path.join(PATHS["dataset_dir"], img_class, img)
-            img = load_image(img_pth)
+            img = load_image_as_tensor(img_pth)
             imgs_lst.append(img)
             labels_lst.append(class_idx)
 

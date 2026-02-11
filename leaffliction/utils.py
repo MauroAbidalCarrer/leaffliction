@@ -1,8 +1,7 @@
 import torchvision
 from torch import Tensor
 
-
-def load_image(image_path: str) -> Tensor:
+def load_image_as_tensor(image_path: str) -> Tensor:
     """Load and decode image from path.
     
     Args:
