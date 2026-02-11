@@ -35,7 +35,6 @@ class Trainer:
         wandb_run = wandb.init(project="leaffliction")
         self.eval_model(val_dl)
         for _ in range(n_epochs):
-            print('epochs', n_epochs)
             self.train_model_for_single_epoch(
                 train_dl,
                 criterion,

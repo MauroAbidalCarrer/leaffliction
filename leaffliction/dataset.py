@@ -66,7 +66,6 @@ def get_raw_dataset() -> dict[str, Tensor]:
     
     return raw_imgs, labels
 
-
 def mk_data_loaders(
     x: Tensor,
     y: Tensor,

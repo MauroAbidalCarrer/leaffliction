@@ -1,3 +1,4 @@
+import os
 import argparse
 import torch
 from torch import Tensor
@@ -29,6 +30,7 @@ def load_model(model_path: str) -> CNN:
 
 def predict(model: CNN, img_path: str) -> tuple[str, float]:
     img_t : Tensor = load_image_as_tensor(img_path)
+    img_t = img_t.unsqueeze(0).to(device=DEVICE).float()
     with torch.no_grad():
         with torch.autocast(DEVICE.type, torch.bfloat16):
             output : Tensor = model(img_t)
@@ -51,11 +53,11 @@ def display_prediction(original_img: np.ndarray, predicted_label: str, confidenc
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("image_path", type=str)
+    parser.add_argument("image_path")
     args = parser.parse_args()
 
     image_path = args.image_path
-    if not image_path.exists():
+    if not os.path.exists(image_path):
         print(f"Error: Path does not exist: {image_path}")
         return
 
