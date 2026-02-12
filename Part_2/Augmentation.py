@@ -1,15 +1,15 @@
 import logging
 import argparse
 import shutil
+import torch
+import numpy as np
+import plotly.graph_objects as go
 from tqdm import tqdm
 from itertools import groupby, chain
 from typing import Dict, Optional, List, Union, Any
 from PIL import Image
 from pathlib import Path
 from torchvision.transforms import v2
-import torch
-import numpy as np
-import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
@@ -126,7 +126,7 @@ class Augmentation:
                 'hue' keys
             crop: Dict with 'resize_target' and 'crop_ratio' keys
             perspective: Dict with 'distortion_scale' key
-            flash: Dict with 'brightness', 'contrast', 'saturation', 'p' keys
+            flash: Dict with 'brightness', 'contrast', 'saturation' keys
         """
         rotation = rotation or {}
         blur = blur or {}
@@ -135,20 +135,20 @@ class Augmentation:
         perspective = perspective or {}
         flash = flash or {}
 
-        self.rotation: Any = self._init_optional(
+        self.rotation = self._init_optional(
             v2.RandomRotation,
             degrees=rotation.get('degrees', (-180, 180)),
         )
 
-        self.constrast: Any = self._init_optional(
+        self.constrast = self._init_optional(
             v2.ColorJitter,
-            brightness=jitter.get('brightness', 0.2),
-            contrast=jitter.get('contrast', 0.8),
-            saturation=jitter.get('saturation', 0.2),
-            hue=jitter.get('hue', 0.1)
+            brightness=jitter.get('brightness', (1.2, 1.2)),
+            contrast=jitter.get('contrast', (1.8, 1.8)),
+            saturation=jitter.get('saturation', (1.2, 1.2)),
+            hue=jitter.get('hue', (0.1, 0.1))
         )
 
-        self.blur: Any = self._init_optional(
+        self.blur = self._init_optional(
             v2.GaussianBlur,
             kernel_size=blur.get('kernel_size', 7),
             sigma=blur.get('sigma', 1.5)
@@ -160,22 +160,17 @@ class Augmentation:
             crop_ratio=crop.get('crop_ratio', 0.6)
         )
 
-        self.perspective: Any = self._init_optional(
+        self.perspective = self._init_optional(
             v2.RandomPerspective,
-            distortion_scale=perspective.get('distortion_scale', 0.3)
+            distortion_scale=perspective.get('distortion_scale', 0.5),
+            p=1.0
         )
 
-        flash_color_jitter: Any = self._init_optional(
+        self.flash = self._init_optional(
             v2.ColorJitter,
             brightness=flash.get('brightness', (2.0, 2.0)),
             contrast=flash.get('contrast', (0.8, 1.0)),
             saturation=flash.get('saturation', (0.7, 1.0))
-        )
-
-        self.flash: Any = self._init_optional(
-            v2.RandomApply,
-            transforms=[flash_color_jitter],
-            p=flash.get('p', 0.5)
         )
 
         self._to_image = v2.ToImage()
@@ -262,13 +257,16 @@ class Augmentation:
             output_dir: Directory where the augmented image should be saved
         """
         try:
+            original_path = Path(original_path)
+            base_name = original_path.stem
+            
             if output_dir:
                 transformed_image_path = (
-                    f'{output_dir}/{original_path.name}_{transform_name}.JPG'
+                    f'{output_dir}/{base_name}_{transform_name}.JPG'
                 )
             else:
                 transformed_image_path = (
-                    f'{original_path.name}_{transform_name}.JPG'
+                    f'{base_name}_{transform_name}.JPG'
                 )
             image.save(transformed_image_path)
         except Exception as e:
