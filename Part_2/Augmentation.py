@@ -15,7 +15,7 @@ from plotly.subplots import make_subplots
 
 
 @dataclass
-class ClassGroup:
+class ClassImageGroup:
     """Class group structure with getter methods."""
     class_name: str
     output_dir: Path
@@ -32,6 +32,31 @@ class ClassGroup:
     def get_images(self) -> List[Path]:
         """Get images list."""
         return self.images
+
+    def get_images_len(self) -> int:
+        return len(self.images)
+
+
+def load_image_as_pil(img: Union[str, Path, Image.Image]) -> Image.Image:
+    """
+    Args:
+        img: Image path or PIL Image
+
+    Returns:
+        PIL Image
+    """
+    if isinstance(img, (str, Path)):
+        try:
+            return Image.open(img)
+        except (
+            FileNotFoundError,
+            OSError,
+            Image.UnidentifiedImageError
+        ) as e:
+            raise ValueError(
+                f"Cannot load image from {img}: {e}"
+            ) from e
+    return img
 
 
 def plot_augmentations_grid(
@@ -80,26 +105,6 @@ def plot_augmentations_grid(
     )
 
     fig.show()
-
-
-def _group_images_by_class(dataset_path: Path) -> Dict[str, List[Path]]:
-    """
-    Group images by their class directory.
-
-    Args:
-        dataset_path: Path to the source dataset directory
-
-    Returns:
-        Dict mapping class names to lists of image paths
-    """
-    images = sorted(
-        dataset_path.rglob("*.JPG"),
-        key=lambda p: p.parent.name
-    )
-    grouped = {}
-    for class_dir, group in groupby(images, key=lambda p: p.parent.name):
-        grouped[class_dir] = list(group)
-    return grouped
 
 
 class Crop(v2.Transform):
@@ -217,7 +222,7 @@ class Augmentation:
         self._to_image = v2.ToImage()
         self._to_dtype = v2.ToDtype(torch.float32, scale=True)
 
-        self.transformations: Dict[str, Any] = {
+        self.transformations: Dict[str, v2.Transform] = {
             'Rotation': self.rotation,
             'Blur': self.blur,
             'Contrast': self.constrast,
@@ -225,6 +230,9 @@ class Augmentation:
             'Illumination': self.flash,
             'Perspective': self.perspective,
         }
+
+    def __len__(self) -> int:
+        return len(self.transformations.keys())
 
     @staticmethod
     def _init_optional(transform_class: type, **kwargs: Any) -> Any:
@@ -246,27 +254,6 @@ class Augmentation:
         except (TypeError, ValueError) as e:
             logging.warning(f"{transform_class.__name__}: {e}, using defaults")
             return transform_class()
-
-    def _load_image(self, img: Union[str, Path, Image.Image]) -> Image.Image:
-        """
-        Args:
-            img: Image path or PIL Image
-
-        Returns:
-            PIL Image
-        """
-        if isinstance(img, (str, Path)):
-            try:
-                return Image.open(img)
-            except (
-                FileNotFoundError,
-                OSError,
-                Image.UnidentifiedImageError
-            ) as e:
-                raise ValueError(
-                    f"Cannot load image from {img}: {e}"
-                ) from e
-        return img
 
     def _save_augmented_image(
         self,
@@ -310,9 +297,9 @@ class Augmentation:
             image_path: Path to the input image
             output_dir: Directory where augmented images should be saved
         """
-        orig_pil = self._load_image(image_path)
+        orig_pil = load_image_as_pil(image_path)
 
-        saved_paths: Dict[str, Image.Image] = {}
+        augmented_images_path: Dict[str, Image.Image] = {}
 
         for transform_name, transform in self.transformations.items():
             try:
@@ -323,12 +310,12 @@ class Augmentation:
                     transform_name,
                     output_dir
                 )
-                saved_paths[transform_name] = augmented_img
+                augmented_images_path[transform_name] = augmented_img
             except Exception as e:
                 logging.warning(
-                    f"Failed to apply {transform_name} to {image_path}: {e}"
+                    f'Failed to apply {transform_name} to {image_path}: {e}'
                 )
-        return saved_paths
+        return augmented_images_path
 
 
 class Balance:
@@ -407,11 +394,11 @@ class Balance:
         """
         return len(list(output_dir.glob("*.JPG")))
 
-    def _get_class_images_and_output_dir(
+    def _get_class_images_group(
         self,
         dataset_path: Path,
         output_dir: Path
-    ) -> List[ClassGroup]:
+    ) -> List[ClassImageGroup]:
         """
         Get images grouped by class with their output directories.
 
@@ -420,16 +407,16 @@ class Balance:
             output_dir: Path to the output directory
 
         Returns:
-            List of ClassGroup instances
+            List of ClassImageGroup instances
         """
         images = sorted(
             dataset_path.rglob("*.JPG"),
             key=lambda p: p.parent.name
         )
 
-        result: List[ClassGroup] = []
+        result: List[ClassImageGroup] = []
         for class_name, group in groupby(images, key=lambda p: p.parent.name):
-            result.append(ClassGroup(
+            result.append(ClassImageGroup(
                 class_name=class_name,
                 output_dir=output_dir / class_name,
                 images=list(group)
@@ -465,7 +452,7 @@ class Balance:
 
     def _augment_class_until_target(
         self,
-        class_group: ClassGroup,
+        class_group: ClassImageGroup,
         target_count: int,
         initial_count: int,
         pbar: tqdm
@@ -474,7 +461,7 @@ class Balance:
         Augment images for a class until target count is reached.
 
         Args:
-            class_group: ClassGroup containing class information
+            class_group: ClassImageGroup containing class information
             target_count: Target number of images to reach
             initial_count: Current count of images in output directory
             pbar: Progress bar to update
@@ -511,18 +498,17 @@ class Balance:
 
             image_idx += 1
 
-    def _validate_and_get_target_count(
+    def _validate_dataset(
         self,
-        class_counts: Dict[str, int]
-    ) -> int:
+        class_counts: Dict[str, int],
+        target_count: int
+    ) -> None:
         """
         Validate dataset and calculate target count for balancing.
 
         Args:
-            class_counts: Dict mapping class names to image counts
-
-        Returns:
-            Target count (maximum class count)
+            class_counts: Dict mapping class names to image counts in dataset
+            target_count:
 
         Raises:
             ValueError: If dataset is invalid or classes have insufficient
@@ -531,19 +517,16 @@ class Balance:
         if not class_counts or len(class_counts.keys()) <= 1:
             raise ValueError("Dataset must have at least 2 classes")
 
-        target_count = max(class_counts.values())
-        num_transforms = len(self.augmentation.transformations)
+        num_transforms = len(self.augmentation)
 
         for class_name, count in class_counts.items():
             needed = target_count - count
             if needed > 0:
-                images_per_cycle = count * num_transforms
-                if images_per_cycle == 0 or needed > images_per_cycle * 100:
+                images_to_augment = count * num_transforms
+                if images_to_augment == 0 or needed > images_to_augment:
                     raise ValueError(
                         f"Class {class_name} has insufficient source images. "
                     )
-
-        return target_count
 
     def balance_dataset(
         self,
@@ -564,25 +547,27 @@ class Balance:
         if not dataset_path.exists() or not dataset_path.is_dir():
             raise ValueError(f"Dataset path does not exist: {dataset_path}")
 
-        class_counts = self._count_images_per_class(dataset_path)
+        image_by_class_counts = self._count_images_per_class(dataset_path)
 
-        target_count = self._validate_and_get_target_count(class_counts)
+        target_count = max(image_by_class_counts.values())
+
+        self._validate_dataset(image_by_class_counts, target_count)
 
         self._copy_dataset(dataset_path, output_dir)
 
-        class_groups = self._get_class_images_and_output_dir(
+        class_images_groups = self._get_class_images_group(
             dataset_path, output_dir
         )
 
         total_needed = sum(
-            max(0, target_count - class_counts.get(group.get_class_name(), 0))
-            for group in class_groups
+            max(0, target_count - image_by_class_counts.get(
+                group.get_class_name(), 0))
+            for group in class_images_groups
         )
 
         with tqdm(total=total_needed, desc="Balancing dataset") as pbar:
-            for class_group in class_groups:
-                class_name = class_group.get_class_name()
-                initial_count = class_counts.get(class_name, 0)
+            for class_group in class_images_groups:
+                initial_count = class_group.get_images_len()
                 needed = target_count - initial_count
 
                 if needed <= 0:
@@ -605,13 +590,6 @@ def main() -> None:
         type=str,
         help='Path to an image file or folder containing images'
     )
-    parser.add_argument(
-        '--output', '-o',
-        type=str,
-        default=None,
-        help='Output directory for augmented images '
-             '(default: same as input)'
-    )
 
     args: argparse.Namespace = parser.parse_args()
 
@@ -629,7 +607,7 @@ def main() -> None:
             augmented_images = augmentation.apply_all_transformations(
                 input_path
             )
-            original_img = augmentation._load_image(input_path)
+            original_img = load_image_as_pil(input_path)
             plot_augmentations_grid(original_img, augmented_images)
         except Exception as e:
             logging.warning(f"Failed to augmented single image: {e}")
