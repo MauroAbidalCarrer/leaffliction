@@ -22,7 +22,7 @@ if __name__ == "__main__":
         raw_x, raw_y = get_raw_dataset()
         train_dl, val_dl = mk_data_loaders(raw_x, raw_y)
 
-        print("Making model")
+        print(f'Making model for {DEVICE} device')
         model = CNN(**DFLT_MODEL_KWARGS).to(device=DEVICE)
         
         print("Making optim and loss")

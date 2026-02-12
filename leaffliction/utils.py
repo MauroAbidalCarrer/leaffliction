@@ -1,5 +1,5 @@
 import torchvision
-from leaffliction.constants import DEVICE
+import torch
 from torch import Tensor
 
 def load_image_as_tensor(image_path: str) -> Tensor:
@@ -11,6 +11,5 @@ def load_image_as_tensor(image_path: str) -> Tensor:
     Returns:
         Image tensor with shape (C, H, W) and dtype uint8
     """
-    img = torchvision.io.decode_image(image_path).to(DEVICE)
-    return img
-
+    img_t = torchvision.io.decode_image(image_path).to(dtype=torch.uint8)
+    return img_t
