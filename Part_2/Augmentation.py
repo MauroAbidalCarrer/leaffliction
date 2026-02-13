@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from PIL import Image
 from pathlib import Path
 from torchvision.transforms import v2
+from torch.nn import functional as F
 from plotly.subplots import make_subplots
 
 
@@ -136,20 +137,28 @@ class Crop(v2.Transform):
         crop_size: int = int(resize_target * crop_ratio)
         return crop_size
 
-    def __call__(self, img: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            img: Tensor image of shape (C, H, W)
-
-        Returns:
-            Cropped tensor image
-        """
-        crop_size: int = self._compute_crop_params(
+    def __call__(self, img):
+        crop_size = self._compute_crop_params(
             self.resize_target, self.crop_ratio
         )
 
-        crop_transform: v2.CenterCrop = v2.CenterCrop(size=crop_size)
-        return crop_transform(img)
+        crop_transform = v2.CenterCrop(size=crop_size)
+        cropped_img_pil = crop_transform(img)
+        cropped_img_tensor = v2.PILToTensor()(cropped_img_pil)
+
+        _, h, w = cropped_img_tensor.shape
+        H, W = 256, 256
+
+        pad_top = (H - h) // 2
+        pad_bottom = H - h - pad_top
+        pad_left = (W - w) // 2
+        pad_right = W - w - pad_left
+
+        padding = (pad_left, pad_right, pad_top, pad_bottom)
+        scaled_img_t = F.pad(cropped_img_tensor, padding, 'constant', 255)
+
+        pil_cropped_with_padding = v2.functional.to_pil_image(scaled_img_t)
+        return pil_cropped_with_padding
 
 
 class Augmentation:
