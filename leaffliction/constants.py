@@ -18,6 +18,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 PATHS = {
     "dataset_url": "https://cdn.intra.42.fr/document/document/42144/leaves.zip",
     "dataset_dir": "dataset",
+    "training_dataset_dir" : "augmented_directory",
     "model": "model.pt",
     "zip": "model.zip",
 }

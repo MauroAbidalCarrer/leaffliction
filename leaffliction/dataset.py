@@ -50,13 +50,13 @@ def replaceData():
 	os.rename("images", PATHS["dataset_dir"])
 	os.remove("dataset.zip")
 
-def get_raw_dataset() -> dict[str, Tensor]:
+def get_dataset_for_training() -> dict[str, Tensor]:
     imgs_lst: list[Tensor] = []
     labels_lst: list[int] = []
-    for img_class in os.listdir(PATHS["dataset_dir"]):
+    for img_class in os.listdir(PATHS["training_dataset_dir"]):
         class_idx = LABEL2ID[img_class]
-        for img in os.listdir(os.path.join("dataset", img_class)):
-            img_pth = os.path.join(PATHS["dataset_dir"], img_class, img)
+        for img in os.listdir(os.path.join(PATHS["training_dataset_dir"], img_class)):
+            img_pth = os.path.join(PATHS["training_dataset_dir"], img_class, img)
             img = load_image_as_tensor(img_pth)
             imgs_lst.append(img)
             labels_lst.append(class_idx)
@@ -104,7 +104,7 @@ def preprocess_batch(x: Tensor, y: Tensor) -> tuple[Tensor, Tensor]:
 
 def ensure_dataset_present():
     """Check if dataset exists, download if not present."""
-    if not os.path.exists(PATHS["dataset_dir"]):
+    if not os.path.exists(PATHS["training_dataset_dir"]):
         print("Dataset not found. Downloading...")
         downloadZip()
     else:
