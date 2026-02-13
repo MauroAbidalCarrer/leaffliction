@@ -1,6 +1,5 @@
 import os
 import urllib.request
-from urllib.error import HTTPError, URLError
 import zipfile
 import shutil
 
@@ -10,17 +9,11 @@ import constants as consts
 def downloadZip():
     if os.path.exists("dataset.zip"):
         os.remove("dataset.zip")
-    try:
-        print("Downloading Dataset Zip")
-        urllib.request.urlretrieve(consts.DATASET_URL, "dataset.zip")
-        print("Download Completed")
-        unzipData()
-    except HTTPError as e:
-        print("Error: HTTP Error")
-    except URLError as e:
-        print("Error: URL Error")
-    except Exception as e:
-        print("Error: Unowkn Error")
+    print("Downloading Dataset Zip")
+    urllib.request.urlretrieve(consts.DATASET_URL, "dataset.zip")
+    print("Download Completed")
+    unzipData()
+
 
 def unzipData():
     try:
@@ -40,6 +33,7 @@ def unzipData():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+
 def replaceData():
     if os.path.exists("dataset"):
         shutil.rmtree("dataset")
@@ -47,4 +41,6 @@ def replaceData():
     os.rename("images", "dataset")
     os.remove("dataset.zip")
 
-downloadZip()
+
+if __name__ == "__main__":
+    downloadZip()
