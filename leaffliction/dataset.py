@@ -3,7 +3,7 @@ import urllib.request
 import zipfile
 import shutil
 
-import constants as consts
+import leaffliction.constants as consts
 
 
 def downloadZip():
