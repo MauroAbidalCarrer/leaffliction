@@ -1,3 +1,4 @@
+augmented_directory/*
 *.JPG
 wandb/*
 .vscode/*
