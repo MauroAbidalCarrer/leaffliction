@@ -15,11 +15,12 @@ import leaffliction.constants as consts
 from leaffliction.constants import LABEL2ID, DEVICE, TRAINING, DATA, PATHS
 from leaffliction.utils import load_image_as_tensor
 
+
 def downloadZip():
     if os.path.exists("dataset.zip"):
         os.remove("dataset.zip")
     print("Downloading Dataset Zip")
-    urllib.request.urlretrieve(consts.DATASET_URL, "dataset.zip")
+    urllib.request.urlretrieve(consts.PATHS["dataset_url"], "dataset.zip")
     print("Download Completed")
     unzipData()
 
@@ -44,11 +45,11 @@ def unzipData():
 
 
 def replaceData():
-	if os.path.exists(PATHS["dataset_dir"]):
-		shutil.rmtree(PATHS["dataset_dir"])
-		print("Old data removed")
-	os.rename("images", PATHS["dataset_dir"])
-	os.remove("dataset.zip")
+    if os.path.exists(PATHS["dataset_dir"]):
+        shutil.rmtree(PATHS["dataset_dir"])
+        print("Old data removed")
+    os.rename("images", PATHS["dataset_dir"])
+    os.remove("dataset.zip")
 
 def get_dataset_for_training() -> dict[str, Tensor]:
     imgs_lst: list[Tensor] = []
