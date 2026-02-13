@@ -1,19 +1,19 @@
 import os
-import urllib.request
 import zipfile
 import shutil
+import urllib.request
 
 import torch
+from torch import Tensor
 from torch.utils.data import (
     Subset,
     DataLoader,
     TensorDataset,
 )
-from torch import Tensor
 
 import leaffliction.constants as consts
-from leaffliction.constants import LABEL2ID, DEVICE, TRAINING, DATA, PATHS
 from leaffliction.utils import load_image_as_tensor
+from leaffliction.constants import LABEL2ID, DEVICE, TRAINING, DATA, PATHS
 
 
 def downloadZip():
@@ -51,28 +51,31 @@ def replaceData():
     os.rename("images", PATHS["dataset_dir"])
     os.remove("dataset.zip")
 
+
 def get_dataset_for_training() -> dict[str, Tensor]:
     imgs_lst: list[Tensor] = []
     labels_lst: list[int] = []
     for img_class in os.listdir(PATHS["training_dataset_dir"]):
         class_idx = LABEL2ID[img_class]
-        for img in os.listdir(os.path.join(PATHS["training_dataset_dir"], img_class)):
-            img_pth = os.path.join(PATHS["training_dataset_dir"], img_class, img)
+        dataset_dir = PATHS["training_dataset_dir"]
+        for img in os.listdir(os.path.join(dataset_dir, img_class)):
+            img_pth = os.path.join(dataset_dir, img_class, img)
             img = load_image_as_tensor(img_pth)
             imgs_lst.append(img)
             labels_lst.append(class_idx)
 
-    raw_imgs = torch.stack(imgs_lst, dim=0) # dataset_size, C, H, W
+    raw_imgs = torch.stack(imgs_lst, dim=0)  # dataset_size, C, H, W
     labels = torch.IntTensor(labels_lst)
-    
+
     return raw_imgs, labels
+
 
 def mk_data_loaders(
     x: Tensor,
     y: Tensor,
     val_fraction=DATA["val_fraction"],
     batch_size=TRAINING["batch_size"],
-    seed: int=DATA["seed"]
+    seed: int = DATA["seed"]
 ) -> dict[str, Tensor]:
     torch.manual_seed(seed)
 
@@ -97,11 +100,13 @@ def mk_data_loaders(
         DataLoader(val_dataset, batch_size),
     )
 
+
 def preprocess_batch(x: Tensor, y: Tensor) -> tuple[Tensor, Tensor]:
     return (
         x.to(device=DEVICE, dtype=torch.bfloat16),
         y.to(device=DEVICE, dtype=torch.long),
     )
+
 
 def ensure_dataset_present():
     """Check if dataset exists, download if not present."""
