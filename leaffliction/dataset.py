@@ -17,8 +17,6 @@ from leaffliction.constants import LABEL2ID, DEVICE, TRAINING, DATA, PATHS
 
 
 def downloadZip():
-    if os.path.exists("dataset.zip"):
-        os.remove("dataset.zip")
     print("Downloading Dataset Zip")
     urllib.request.urlretrieve(consts.PATHS["dataset_url"], "dataset.zip")
     print("Download Completed")
@@ -31,9 +29,8 @@ def unzipData():
             if z.testzip() is not None:
                 print("Zip file is Corrupted")
             else:
-                z.extractall()
+                z.extractall(PATHS["dataset_dir"])
                 print("Unzip Successful")
-                replaceData()
     except zipfile.BadZipFile:
         print("Error: The file is not a zip file or is corrupted.")
     except FileNotFoundError:
@@ -42,14 +39,6 @@ def unzipData():
         print("Error: You don't have permission to write to that folder.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-
-
-def replaceData():
-    if os.path.exists(PATHS["dataset_dir"]):
-        shutil.rmtree(PATHS["dataset_dir"])
-        print("Old data removed")
-    os.rename("images", PATHS["dataset_dir"])
-    os.remove("dataset.zip")
 
 
 def get_dataset_for_training() -> dict[str, Tensor]:
