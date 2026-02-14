@@ -32,7 +32,7 @@ MODEL = {
 
 TRAINING = {
     "batch_size": 32,
-    "n_epochs": 4,
+    "n_epochs": 3,
     "learning_rate": 1e-4,
     "optimizer": "Adam",
     "gradient_clip_norm": 1.0,
