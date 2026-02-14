@@ -1,6 +1,7 @@
 from itertools import pairwise, repeat
 from torch import nn, Tensor
 
+
 class CNN(nn.Module):
     def __init__(
         self,
@@ -21,16 +22,20 @@ class CNN(nn.Module):
             )
             conv_layers.append(conv_layer)
         self.conv_layers = nn.ModuleList(conv_layers)
-        self.batch_norms = nn.ModuleList([nn.LazyBatchNorm2d() for _ in range(len(conv_layers))])
-        
+        self.batch_norms = nn.ModuleList([
+            nn.LazyBatchNorm2d()
+            for _ in range(len(conv_layers))
+        ])
+
         self.linear_layers = []
         for width in repeat(mlp_width, mlp_depth - 1):
             self.linear_layers.append(nn.LazyLinear(width))
         self.linear_layers.append(nn.LazyLinear(n_classes))
         self.linear_layers = nn.ModuleList(self.linear_layers)
-    
+
     def forward(self, x: Tensor) -> Tensor:
-        for layer_idx, (b_norm, conv) in enumerate(zip(self.batch_norms, self.conv_layers)):
+        layer_it = enumerate(zip(self.batch_norms, self.conv_layers))
+        for layer_idx, (b_norm, conv) in layer_it:
             x = b_norm(x)
             x = conv(x)
             x = nn.functional.relu(x)

@@ -15,10 +15,10 @@ ID2LABEL = {v: k for k, v in LABEL2ID.items()}
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+DATASET_URL = "https://cdn.intra.42.fr/document/document/42144/leaves.zip"
 PATHS = {
-    "dataset_url": "https://cdn.intra.42.fr/document/document/42144/leaves.zip",
     "dataset_dir": "dataset",
-    "training_dataset_dir" : "augmented_directory",
+    "training_dataset_dir": "augmented_directory",
     "model": "model.pt",
     "zip": "model.zip",
 }

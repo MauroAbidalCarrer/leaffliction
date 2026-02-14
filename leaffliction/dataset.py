@@ -1,6 +1,5 @@
 import os
 import zipfile
-import shutil
 import urllib.request
 
 import torch
@@ -18,7 +17,7 @@ from leaffliction.constants import LABEL2ID, DEVICE, TRAINING, DATA, PATHS
 
 def downloadZip():
     print("Downloading Dataset Zip")
-    urllib.request.urlretrieve(consts.PATHS["dataset_url"], "dataset.zip")
+    urllib.request.urlretrieve(consts.DATASET_URL, "dataset.zip")
     print("Download Completed")
     unzipData()
 

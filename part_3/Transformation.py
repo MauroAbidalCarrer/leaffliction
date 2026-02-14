@@ -25,7 +25,6 @@ def main() -> None:
     else:
         assert os.path.isdir(args.src), PTH_NOT_FILE_ERR.format(pth="dst")
         transform_dataset(args.src, args.dst)
-        # plt_transformed_dataset(args.dst)
 
 
 def plt_transforms_of_single_img(img_path: str) -> None:
@@ -183,4 +182,7 @@ def vertical_diff(x: Tensor) -> Tensor:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print("Error: ", e)
