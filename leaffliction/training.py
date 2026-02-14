@@ -13,16 +13,19 @@ from tqdm import tqdm
 from leaffliction.dataset import preprocess_batch
 from leaffliction.constants import TRAINING, DEVICE
 
+
 criterion_t = Callable[[Tensor, Tensor], Tuple[Tensor, Dict[str, Tensor]]]
 
+
 class Trainer:
-    def __init__(self,
+    def __init__(
+        self,
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
     ):
         self.model = model
-        self.optimizer = optimizer   
-    
+        self.optimizer = optimizer
+
     def train_model(
         self,
         train_dl: torch.utils.data.DataLoader,
