@@ -75,7 +75,7 @@ def mk_data_loaders(
     y: Tensor,
     val_fraction=DATA["val_fraction"],
     batch_size=TRAINING["batch_size"],
-    seed: int = DATA["seed"]
+    seed: int = consts.SEED,
 ) -> dict[str, Tensor]:
     torch.manual_seed(seed)
 

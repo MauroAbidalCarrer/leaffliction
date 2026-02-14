@@ -32,7 +32,7 @@ MODEL = {
 
 TRAINING = {
     "batch_size": 32,
-    "n_epochs": 3,
+    "n_epochs": 5,
     "learning_rate": 1e-4,
     "optimizer": "Adam",
     "gradient_clip_norm": 1.0,
@@ -40,7 +40,6 @@ TRAINING = {
 
 DATA = {
     "val_fraction": 0.2,
-    "seed": 42,
 }
 
 DFLT_MODEL_KWARGS = {
@@ -53,3 +52,5 @@ DFLT_MODEL_KWARGS = {
 DFLT_OPTIMIZER_KWARGS = {
     "lr": TRAINING["learning_rate"],
 }
+
+SEED = 42
