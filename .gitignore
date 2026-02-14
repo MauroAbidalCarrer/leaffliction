@@ -1,3 +1,5 @@
+*.zip
+*.pt
 augmented_directory/*
 *.JPG
 wandb/*
