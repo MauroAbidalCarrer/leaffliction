@@ -1,5 +1,6 @@
 import os
 import zipfile
+
 import torch
 from torch import nn
 from leaffliction.constants import (
@@ -9,15 +10,18 @@ from leaffliction.constants import (
     DFLT_MODEL_KWARGS,
     DFLT_OPTIMIZER_KWARGS,
 )
+
 from leaffliction.dataset import get_dataset_for_training, \
                                 mk_data_loaders, \
                                 ensure_dataset_present
 from Part_2.Augmentation import Balance, Augmentation
 from leaffliction.models import CNN
 from leaffliction.training import Trainer
+from leaffliction import constants
 
 if __name__ == "__main__":
     try:
+        torch.manual_seed(constants.SEED)
         augmentation: Augmentation = Augmentation()
         balance = Balance(augmentation)
 
